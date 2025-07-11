@@ -1,0 +1,289 @@
+{
+    "designSystem": {
+      "name": "Voice Memos iOS App",
+      "version": "1.0.0",
+      "description": "Complete design system for iOS Voice Memos application interface"
+    },
+    "colors": {
+      "primary": {
+        "background": "#F2F2F7",
+        "surface": "#FFFFFF",
+        "text": "#000000",
+        "secondary_text": "#8E8E93",
+        "accent": "#FF3B30"
+      },
+      "interactive": {
+        "record_button": "#FF3B30",
+        "record_button_ring": "#FFFFFF",
+        "play_button": "#000000",
+        "play_button_background": "#000000",
+        "control_buttons": "#000000",
+        "control_button_background": "#F2F2F7",
+        "progress_active": "#FF3B30",
+        "progress_inactive": "#E5E5EA"
+      },
+      "ui_elements": {
+        "waveform_active": "#FF3B30",
+        "waveform_inactive": "#E5E5EA",
+        "circular_progress": "#E5E5EA",
+        "time_display": "#8E8E93",
+        "separator": "#C6C6C8"
+      }
+    },
+    "typography": {
+      "font_family": {
+        "primary": "SF Pro Display",
+        "system": "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif"
+      },
+      "font_sizes": {
+        "title": "34px",
+        "memo_title": "17px",
+        "time_display": "15px",
+        "control_label": "13px",
+        "instruction_text": "15px"
+      },
+      "font_weights": {
+        "title": "700",
+        "memo_title": "600",
+        "time_display": "400",
+        "control_label": "500",
+        "instruction_text": "400"
+      },
+      "line_heights": {
+        "title": "1.2",
+        "memo_title": "1.3",
+        "time_display": "1.4",
+        "control_label": "1.2",
+        "instruction_text": "1.4"
+      }
+    },
+    "spacing": {
+      "scale": "8px",
+      "sizes": {
+        "xs": "4px",
+        "sm": "8px",
+        "md": "16px",
+        "lg": "24px",
+        "xl": "32px",
+        "xxl": "48px"
+      },
+      "layout": {
+        "screen_padding": "20px",
+        "title_margin_top": "60px",
+        "title_margin_bottom": "40px",
+        "memo_item_spacing": "24px",
+        "control_spacing": "16px"
+      }
+    },
+    "components": {
+      "app_title": {
+        "text": "VOICE MEMOS",
+        "font_size": "34px",
+        "font_weight": "700",
+        "color": "#000000",
+        "letter_spacing": "0.5px",
+        "text_align": "center",
+        "margin_top": "60px",
+        "margin_bottom": "40px"
+      },
+      "memo_item": {
+        "width": "100%",
+        "padding": "20px",
+        "background": "#FFFFFF",
+        "border_radius": "12px",
+        "shadow": "0 2px 8px rgba(0, 0, 0, 0.1)",
+        "margin_bottom": "16px"
+      },
+      "memo_title": {
+        "font_size": "17px",
+        "font_weight": "600",
+        "color": "#000000",
+        "margin_bottom": "12px",
+        "text_align": "center"
+      },
+      "circular_player": {
+        "width": "200px",
+        "height": "200px",
+        "border_radius": "50%",
+        "background": "#FFFFFF",
+        "border": "2px solid #E5E5EA",
+        "position": "relative",
+        "margin": "0 auto 20px auto"
+      },
+      "play_button": {
+        "width": "60px",
+        "height": "60px",
+        "border_radius": "50%",
+        "background": "#000000",
+        "color": "#FFFFFF",
+        "border": "none",
+        "position": "absolute",
+        "top": "50%",
+        "left": "50%",
+        "transform": "translate(-50%, -50%)",
+        "display": "flex",
+        "align_items": "center",
+        "justify_content": "center"
+      },
+      "progress_ring": {
+        "width": "196px",
+        "height": "196px",
+        "border_radius": "50%",
+        "border": "2px solid #E5E5EA",
+        "position": "absolute",
+        "top": "0",
+        "left": "0"
+      },
+      "skip_controls": {
+        "width": "40px",
+        "height": "40px",
+        "border_radius": "50%",
+        "background": "#F2F2F7",
+        "border": "none",
+        "display": "flex",
+        "align_items": "center",
+        "justify_content": "center",
+        "position": "absolute",
+        "top": "50%",
+        "transform": "translateY(-50%)"
+      },
+      "skip_backward": {
+        "left": "40px"
+      },
+      "skip_forward": {
+        "right": "40px"
+      },
+      "time_display": {
+        "font_size": "15px",
+        "font_weight": "400",
+        "color": "#8E8E93",
+        "text_align": "center",
+        "margin_top": "8px"
+      },
+      "record_button": {
+        "width": "80px",
+        "height": "80px",
+        "border_radius": "50%",
+        "background": "#FF3B30",
+        "border": "4px solid #FFFFFF",
+        "box_shadow": "0 4px 12px rgba(255, 59, 48, 0.3)",
+        "position": "fixed",
+        "bottom": "40px",
+        "left": "50%",
+        "transform": "translateX(-50%)",
+        "display": "flex",
+        "align_items": "center",
+        "justify_content": "center"
+      },
+      "record_instruction": {
+        "font_size": "15px",
+        "font_weight": "400",
+        "color": "#8E8E93",
+        "text_align": "center",
+        "position": "fixed",
+        "bottom": "130px",
+        "left": "50%",
+        "transform": "translateX(-50%)",
+        "white_space": "nowrap"
+      }
+    },
+    "layout": {
+      "container": {
+        "max_width": "414px",
+        "margin": "0 auto",
+        "padding": "0 20px",
+        "background": "#F2F2F7",
+        "min_height": "100vh",
+        "position": "relative"
+      },
+      "content_area": {
+        "padding_top": "60px",
+        "padding_bottom": "180px"
+      }
+    },
+    "animations": {
+      "button_press": {
+        "transform": "scale(0.95)",
+        "transition": "transform 0.1s ease-in-out"
+      },
+      "recording_pulse": {
+        "animation": "pulse 2s infinite",
+        "keyframes": {
+          "0%": { "transform": "scale(1)", "opacity": "1" },
+          "50%": { "transform": "scale(1.05)", "opacity": "0.8" },
+          "100%": { "transform": "scale(1)", "opacity": "1" }
+        }
+      },
+      "progress_ring": {
+        "transition": "stroke-dashoffset 0.3s ease-in-out"
+      }
+    },
+    "interactions": {
+      "hover_states": {
+        "buttons": {
+          "transform": "scale(1.02)",
+          "transition": "transform 0.2s ease-in-out"
+        }
+      },
+      "active_states": {
+        "buttons": {
+          "transform": "scale(0.98)",
+          "transition": "transform 0.1s ease-in-out"
+        }
+      }
+    },
+    "accessibility": {
+      "contrast_ratios": {
+        "text_on_background": "4.5:1",
+        "interactive_elements": "3:1"
+      },
+      "focus_indicators": {
+        "outline": "2px solid #007AFF",
+        "outline_offset": "2px"
+      },
+      "aria_labels": {
+        "play_button": "Play recording",
+        "record_button": "Start recording",
+        "skip_backward": "Skip backward 10 seconds",
+        "skip_forward": "Skip forward 10 seconds"
+      }
+    },
+    "responsive": {
+      "breakpoints": {
+        "mobile": "414px",
+        "tablet": "768px",
+        "desktop": "1024px"
+      },
+      "scaling": {
+        "font_size_mobile": "1.0",
+        "font_size_tablet": "1.1",
+        "font_size_desktop": "1.2"
+      }
+    },
+    "icons": {
+      "play": "▶",
+      "pause": "⏸",
+      "skip_backward": "⏮",
+      "skip_forward": "⏭",
+      "record": "●",
+      "more": "⋯"
+    },
+    "shadows": {
+      "card": "0 2px 8px rgba(0, 0, 0, 0.1)",
+      "button": "0 4px 12px rgba(255, 59, 48, 0.3)",
+      "elevated": "0 8px 24px rgba(0, 0, 0, 0.15)"
+    },
+    "borders": {
+      "radius": {
+        "small": "8px",
+        "medium": "12px",
+        "large": "16px",
+        "circle": "50%"
+      },
+      "width": {
+        "thin": "1px",
+        "medium": "2px",
+        "thick": "4px"
+      }
+    }
+  }
