@@ -149,15 +149,9 @@ const VoiceMemosScreen = () => {
       
               // Clamp and smooth
               target = Math.max(MIN_AMPLITUDE, Math.min(MAX_AMPLITUDE, target));
-              const currentValue = bar.value.__getValue ? bar.value.__getValue() : target; // fallback if not available
-              const smoothed = currentValue * SMOOTHING_FACTOR + target * (1 - SMOOTHING_FACTOR);
-      
-              // Animate with slight decay if new target is lower
-              const finalValue = smoothed < currentValue
-                ? Math.max(currentValue - PEAK_HOLD_DECAY, smoothed)
-                : smoothed;
-      
-              bar.value = withTiming(finalValue, { duration: 80 });
+              
+              // Simple smoothing without accessing private properties
+              bar.value = withTiming(target, { duration: 80 });
             });
           }
         } catch (error) {
@@ -249,27 +243,27 @@ const VoiceMemosScreen = () => {
   };
 
   const slideToNext = () => {
-    if (currentIndex < memos.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      // Reset translateY since circles will reposition based on new currentIndex
-      translateY.value = withSpring(0, {
-        damping: 20,
-        stiffness: 250,
-        mass: 0.5,
-      });
-    }
+    // Infinite scroll: wrap to beginning when reaching end
+    const nextIndex = currentIndex < memos.length - 1 ? currentIndex + 1 : 0;
+    setCurrentIndex(nextIndex);
+    // Reset translateY since circles will reposition based on new currentIndex
+    translateY.value = withSpring(0, {
+      damping: 20,
+      stiffness: 250,
+      mass: 0.5,
+    });
   };
 
   const slideToPrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-      // Reset translateY since circles will reposition based on new currentIndex
-      translateY.value = withSpring(0, {
-        damping: 20,
-        stiffness: 250,
-        mass: 0.5,
-      });
-    }
+    // Infinite scroll: wrap to end when going before beginning
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : memos.length - 1;
+    setCurrentIndex(prevIndex);
+    // Reset translateY since circles will reposition based on new currentIndex
+    translateY.value = withSpring(0, {
+      damping: 20,
+      stiffness: 250,
+      mass: 0.5,
+    });
   };
 
   const gestureHandler = useAnimatedGestureHandler({
@@ -289,10 +283,10 @@ const VoiceMemosScreen = () => {
       const shouldSlideUp = event.translationY < -40 && Math.abs(event.velocityY) > 100;
       const shouldSlideDown = event.translationY > 40 && Math.abs(event.velocityY) > 100;
 
-      if (shouldSlideUp && currentIndex < memos.length - 1) {
+      if (shouldSlideUp) {
         console.log('Sliding to next');
         runOnJS(slideToNext)();
-      } else if (shouldSlideDown && currentIndex > 0) {
+      } else if (shouldSlideDown) {
         console.log('Sliding to prev');
         runOnJS(slideToPrev)();
       } else {
@@ -332,32 +326,71 @@ const VoiceMemosScreen = () => {
       const basePosition = (index - currentIndex) * 160;
       const gestureOffset = translateY.value;
       
-      // Only show current circle and circles below it (hide circles that slid up)
-      const shouldShow = index >= currentIndex;
+      // Always show all circles
+      const shouldShow = true;
       
-      // Enhanced scale and opacity based on position
+      // Calculate visual hierarchy: main circle is largest, others get progressively smaller
       let scale = 1;
       let opacity = 1;
       
-      if (!isMain) {
-        const distanceFromMain = Math.abs(index - currentIndex);
-        const adjustedDistance = distanceFromMain + Math.abs(gestureOffset) / 160;
+      if (index !== currentIndex) {
+        // Calculate distance from current for sizing
+        let visualDistance;
         
-        scale = Math.max(0.6, 1 - (adjustedDistance * 0.15));
-        opacity = Math.max(0.3, 1 - (adjustedDistance * 0.25));
+        if (index > currentIndex) {
+          // Normal case: circles after current
+          visualDistance = index - currentIndex;
+        } else {
+          // Wrap-around case: circles before current appear after the end
+          visualDistance = (memos.length - currentIndex) + index;
+        }
+        
+        // Progressive scaling: each circle below gets smaller
+        scale = interpolate(
+          visualDistance,
+          [0, 1, 2, 3],
+          [1, 0.9, 0.75, 0.6],
+          Extrapolate.CLAMP
+        );
       }
 
-      // Add subtle rotation during gesture
-      const rotation = gestureOffset * 0.02;
+      // Smooth rotation during gesture
+      const rotation = interpolate(
+        gestureOffset,
+        [-200, 0, 200],
+        [-2, 0, 2],
+        Extrapolate.CLAMP
+      );
+
+      // Calculate final position for infinite scroll
+      let finalPosition;
+      
+      // Create the visual order explicitly for each scenario
+      let visualOrder: number[] = [];
+      
+      if (currentIndex === 0) {
+        // Circle 1 is main: [1, 2, 3]
+        visualOrder = [0, 1, 2];
+      } else if (currentIndex === 1) {
+        // Circle 2 is main: [2, 3, 1]
+        visualOrder = [1, 2, 0];
+      } else if (currentIndex === 2) {
+        // Circle 3 is main: [3, 1, 2]
+        visualOrder = [2, 0, 1];
+      }
+      
+      // Find this circle's position in the visual order
+      const visualPosition = visualOrder.indexOf(index);
+      finalPosition = visualPosition * 160 + gestureOffset;
 
       return {
         transform: [
-          { translateY: basePosition + gestureOffset },
+          { translateY: finalPosition },
           { scale },
           { rotateZ: `${rotation}deg` },
         ],
         opacity: shouldShow ? opacity : 0,
-        zIndex: isMain ? 10 : memos.length - index,
+        zIndex: index === currentIndex ? 100 : (50 - visualPosition),
       };
     });
 
@@ -372,7 +405,7 @@ const VoiceMemosScreen = () => {
           borderRadius: size / 2,
         }]}>
           {visualizerBars.map((barValue, barIndex) => {
-            const angle = (barIndex * 360 / 64) * (Math.PI / 180); // Changed from 32 to 64
+            const angle = (barIndex * 360 / 128) * (Math.PI / 180); // Using 128 bars
             const radius = (size - 30) / 2; // Position bars around the circle border
             const x = size / 2 + radius * Math.cos(angle - Math.PI / 2);
             const y = size / 2 + radius * Math.sin(angle - Math.PI / 2);
@@ -384,18 +417,18 @@ const VoiceMemosScreen = () => {
                   styles.visualizerBar,
                   {
                     position: 'absolute',
-                    left: x - 2, // Increased from 1.5 to 2 for wider bars
+                    left: x - 2, // Centered positioning
                     top: y - 14,
-                    width: 4, // Increased from 3 to 4 for wider bars
+                    width: 4,
                     backgroundColor: '#FF3B30',
-                    borderRadius: 2, // Increased from 1.5 to 2
+                    borderRadius: 2,
                     transform: [
-                      { rotate: `${(barIndex * 360 / 64)}deg` } // Changed from 32 to 64
+                      { rotate: `${(barIndex * 360 / 128)}deg` }
                     ],
                   },
                   useAnimatedStyle(() => ({
-                    height: 16 + barValue.value * 32, // Increased range from 6-25 to 8-32
-                    opacity: isRecording ? Math.max(0.7, barValue.value) : 0.4, // Increased minimum opacity
+                    height: 16 + barValue.value * 32,
+                    opacity: isRecording ? Math.max(0.7, barValue.value) : 0.4,
                   }))
                 ]}
               />
@@ -414,10 +447,6 @@ const VoiceMemosScreen = () => {
             height: size + 40, 
             borderRadius: (size + 40) / 2,
             overflow: 'hidden',
-            minWidth: size + 40,
-            minHeight: size + 40,
-            maxWidth: size + 40,
-            maxHeight: size + 40,
           }
         ]} />
         
@@ -428,10 +457,6 @@ const VoiceMemosScreen = () => {
             height: size,
             borderRadius: size / 2,
             overflow: 'hidden',
-            minWidth: size,
-            minHeight: size,
-            maxWidth: size,
-            maxHeight: size,
             backgroundColor: '#FFFFFF',
           }
         ]}>
@@ -439,49 +464,49 @@ const VoiceMemosScreen = () => {
           <AudioVisualizerBorder />
           
           {!isFirstCircle && (
-            <View style={[styles.tickMarksContainer, {
-              width: size,
-              height: size,
-              borderRadius: size / 2,
-              overflow: 'hidden',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-            }]}>
-              {Array.from({ length: 120 }).map((_, tickIndex) => {
-                const angle = (tickIndex * 3) * (Math.PI / 180);
-                const radius = (size - 20) / 2;
-                const x = size / 2 + radius * Math.cos(angle - Math.PI / 2);
-                const y = size / 2 + radius * Math.sin(angle - Math.PI / 2);
-                
-                const distanceFromCenter = Math.sqrt(
-                  Math.pow(x - size / 2, 2) + Math.pow(y - size / 2, 2)
-                );
-                
-                if (distanceFromCenter > (size / 2 - 10)) {
-                  return null;
-                }
-                
-                return (
-                  <View
-                    key={tickIndex}
-                    style={[
-                      styles.tickMark,
-                      {
-                        left: x - 1,
-                        top: y - 2,
-                        backgroundColor: tickIndex < (progress * 120 / 100) ? '#FF3B30' : '#E5E5EA',
-                      }
-                    ]}
-                  />
-                );
-              })}
-            </View>
+          <View style={[styles.tickMarksContainer, {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            overflow: 'hidden',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+          }]}>
+            {Array.from({ length: 120 }).map((_, tickIndex) => {
+              const angle = (tickIndex * 3) * (Math.PI / 180);
+              const radius = (size - 20) / 2;
+              const x = size / 2 + radius * Math.cos(angle - Math.PI / 2);
+              const y = size / 2 + radius * Math.sin(angle - Math.PI / 2);
+              
+              const distanceFromCenter = Math.sqrt(
+                Math.pow(x - size / 2, 2) + Math.pow(y - size / 2, 2)
+              );
+              
+              if (distanceFromCenter > (size / 2 - 10)) {
+                return null;
+              }
+              
+              return (
+                <View
+                  key={tickIndex}
+                  style={[
+                    styles.tickMark,
+                    {
+                      left: x - 1,
+                      top: y - 2,
+                      backgroundColor: tickIndex < (progress * 120 / 100) ? '#FF3B30' : '#E5E5EA',
+                    }
+                  ]}
+                />
+              );
+            })}
+          </View>
           )}
           
           <View style={[styles.centerContent, {
-            width: Math.min(160, size * 0.5),
-            height: Math.min(160, size * 0.5),
+            width: Math.min(160, size * 0.8),
+            height: Math.min(160, size * 0.8),
             borderRadius: Math.min(80, size * 0.25),
           }]}>
             {isFirstCircle ? (
@@ -495,29 +520,29 @@ const VoiceMemosScreen = () => {
             ) : (
               // Regular memo controls for other circles
               <>
-                <Text style={styles.memoTitle}>{memo.title}</Text>
-                
-                <View style={styles.controlsRow}>
-                  <TouchableOpacity style={styles.skipButton}>
-                    <Text style={styles.skipText}>10</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    onPress={() => handlePlayPress(memo.id)}
-                    style={styles.playButton}
-                  >
-                    <Text style={styles.playIcon}>
-                      {memo.isPlaying ? '⏸' : '▶'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity style={styles.skipButton}>
-                    <Text style={styles.skipText}>10</Text>
-                  </TouchableOpacity>
-                </View>
-                
-                <Text style={styles.duration}>{memo.duration}</Text>
-                <Text style={styles.menuDots}>•••</Text>
+            <Text style={styles.memoTitle}>{memo.title}</Text>
+            
+            <View style={styles.controlsRow}>
+              <TouchableOpacity style={styles.skipButton}>
+                <Text style={styles.skipText}>10</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                onPress={() => handlePlayPress(memo.id)}
+                style={styles.playButton}
+              >
+                <Text style={styles.playIcon}>
+                  {memo.isPlaying ? '⏸' : '▶'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.skipButton}>
+                <Text style={styles.skipText}>10</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.duration}>{memo.duration}</Text>
+            <Text style={styles.menuDots}>•••</Text>
               </>
             )}
           </View>
@@ -648,6 +673,14 @@ const styles = StyleSheet.create({
       ios: {
         borderWidth: 0.5,
         borderColor: '#F0F0F0',
+        // Enhanced iOS shadows to match Android elevation
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 6,
+        },
+        shadowOpacity: 0.15,
+        shadowRadius: 15,
       },
     }),
   },
@@ -671,6 +704,14 @@ const styles = StyleSheet.create({
       ios: {
         borderWidth: 0.1,
         borderColor: 'transparent',
+        // Add subtle inner shadow for depth
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
       },
     }),
   },
@@ -699,14 +740,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
-    width: 160,
-    height: 160,
+    width: 200,
+    height: 200,
     // Make the center content area circular to prevent inner shape artifacts
     borderRadius: 80,
     // Ensure circular clipping on Android
     ...Platform.select({
       android: {
-        overflow: 'hidden',
+        // overflow: 'hidden',
         backgroundColor: 'transparent',
       },
     }),
@@ -776,9 +817,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: '50%',
-    marginLeft: -75,
+    marginLeft: -60,
     height: 200,
-    width: 150,
+    width: 120,
     backgroundColor: '#000000',
     borderTopLeftRadius: 120,
     borderTopRightRadius: 120,
@@ -831,7 +872,7 @@ const styles = StyleSheet.create({
   },
   recordButtonWrapper: {
     position: 'absolute',
-    top: 20,
+    top: 25,
     alignItems: 'center',
     justifyContent: 'center',
   },
