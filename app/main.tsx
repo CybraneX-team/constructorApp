@@ -57,7 +57,7 @@ const VoiceMemosScreen = () => {
     },
     {
       id: '3',
-      title: 'Meeting\Records',
+      title: 'Meeting\nRecords',
       duration: '00:28',
       isPlaying: false,
       progress: 0,
