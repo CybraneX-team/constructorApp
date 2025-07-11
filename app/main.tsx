@@ -50,14 +50,14 @@ const VoiceMemosScreen = () => {
     },
     {
       id: '2',
-      title: 'Invoice\\nReviews',
+      title: 'Invoice\nReviews',
       duration: '02:15',
       isPlaying: false,
       progress: 0,
     },
     {
       id: '3',
-      title: 'Meeting',
+      title: 'Meeting\Records',
       duration: '00:28',
       isPlaying: false,
       progress: 0,
@@ -69,8 +69,32 @@ const VoiceMemosScreen = () => {
   const recordButtonOpacity = useSharedValue(1);
   const translateY = useSharedValue(0);
   
+  // Animated title values for smooth transitions
+  const titleTranslateY = useSharedValue(0);
+  
   // Audio visualizer animation values - 64 bars for denser circular visualizer
   const visualizerBars = Array.from({ length: 128 }, () => useSharedValue(0.3));
+
+  // Get current title based on active circle
+  const getCurrentTitle = () => {
+    const currentMemo = memos[currentIndex];
+    if (currentIndex === 0) return 'VOICE MEMOS';
+    return currentMemo.title.toUpperCase().replace('\\n', ' ');
+  };
+
+  // Memoized current title for performance
+  const currentTitle = React.useMemo(() => getCurrentTitle(), [currentIndex, memos]);
+
+  // Animate title change when currentIndex changes
+  useEffect(() => {
+    // Smooth slide transition without blinking
+    titleTranslateY.value = -30; // Start from above
+    titleTranslateY.value = withSpring(0, {
+      damping: 20,
+      stiffness: 400,
+      mass: 0.6,
+    });
+  }, [currentIndex]);
 
   // Initialize audio permissions
   useEffect(() => {
@@ -201,16 +225,16 @@ const VoiceMemosScreen = () => {
         setIsRecording(true);
         console.log('Recording started');
 
-        recordButtonOpacity.value = withRepeat(
-          withTiming(0.8, { duration: 1000 }),
-          -1,
-          true
-        );
-        recordButtonScale.value = withRepeat(
-          withTiming(1.1, { duration: 1000 }),
-          -1,
-          true
-        );
+      recordButtonOpacity.value = withRepeat(
+        withTiming(0.8, { duration: 1000 }),
+        -1,
+        true
+      );
+      recordButtonScale.value = withRepeat(
+        withTiming(1.1, { duration: 1000 }),
+        -1,
+        true
+      );
       } catch (error) {
         console.error('Failed to start recording:', error);
       }
@@ -224,8 +248,8 @@ const VoiceMemosScreen = () => {
         setIsRecording(false);
         console.log('Recording stopped');
 
-        recordButtonOpacity.value = withTiming(1);
-        recordButtonScale.value = withTiming(1);
+      recordButtonOpacity.value = withTiming(1);
+      recordButtonScale.value = withTiming(1);
       } catch (error) {
         console.error('Failed to stop recording:', error);
       }
@@ -246,24 +270,24 @@ const VoiceMemosScreen = () => {
     // Infinite scroll: wrap to beginning when reaching end
     const nextIndex = currentIndex < memos.length - 1 ? currentIndex + 1 : 0;
     setCurrentIndex(nextIndex);
-    // Reset translateY since circles will reposition based on new currentIndex
-    translateY.value = withSpring(0, {
-      damping: 20,
-      stiffness: 250,
-      mass: 0.5,
-    });
+      // Reset translateY since circles will reposition based on new currentIndex
+      translateY.value = withSpring(0, {
+        damping: 20,
+        stiffness: 250,
+        mass: 0.5,
+      });
   };
 
   const slideToPrev = () => {
     // Infinite scroll: wrap to end when going before beginning
     const prevIndex = currentIndex > 0 ? currentIndex - 1 : memos.length - 1;
     setCurrentIndex(prevIndex);
-    // Reset translateY since circles will reposition based on new currentIndex
-    translateY.value = withSpring(0, {
-      damping: 20,
-      stiffness: 250,
-      mass: 0.5,
-    });
+      // Reset translateY since circles will reposition based on new currentIndex
+      translateY.value = withSpring(0, {
+        damping: 20,
+        stiffness: 250,
+        mass: 0.5,
+      });
   };
 
   const gestureHandler = useAnimatedGestureHandler({
@@ -565,9 +589,11 @@ const VoiceMemosScreen = () => {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
         
-        <View style={styles.header}>
-          <Text style={styles.title}>VOICE MEMOS</Text>
-        </View>
+        <Animated.View style={[styles.header, useAnimatedStyle(() => ({
+          transform: [{ translateY: titleTranslateY.value }],
+        }))]}>
+          <Text style={styles.title}>{currentTitle}</Text>
+        </Animated.View>
         
         <PanGestureHandler onGestureEvent={gestureHandler}>
           <Animated.View style={styles.circlesContainer}>
@@ -594,15 +620,15 @@ const VoiceMemosScreen = () => {
         
         <View style={styles.recordButtonWrapper}>
           <AudioVisualizer />
-          <AnimatedTouchableOpacity
-            onPress={handleRecordPress}
-            style={[
-              styles.recordButton,
-              recordButtonAnimatedStyle,
-            ]}
-          >
-            <View style={styles.recordButtonInner} />
-          </AnimatedTouchableOpacity>
+            <AnimatedTouchableOpacity
+              onPress={handleRecordPress}
+              style={[
+                styles.recordButton,
+                recordButtonAnimatedStyle,
+              ]}
+            >
+              <View style={styles.recordButtonInner} />
+            </AnimatedTouchableOpacity>
         </View>
         
         <View style={styles.instructionWrapper}>
