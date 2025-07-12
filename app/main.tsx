@@ -50,14 +50,14 @@ const VoiceMemosScreen = () => {
     },
     {
       id: '2',
-      title: 'Invoice\nReviews',
+      title: 'Record\nBook',
       duration: '02:15',
       isPlaying: false,
       progress: 0,
     },
     {
       id: '3',
-      title: 'Meeting\nRecords',
+      title: 'Search\nRecords',
       duration: '00:28',
       isPlaying: false,
       progress: 0,
@@ -78,7 +78,7 @@ const VoiceMemosScreen = () => {
   // Get current title based on active circle
   const getCurrentTitle = () => {
     const currentMemo = memos[currentIndex];
-    if (currentIndex === 0) return 'VOICE MEMOS';
+    if (currentIndex === 0) return 'CAPTURE\nNOW';
     return currentMemo.title.toUpperCase().replace('\\n', ' ');
   };
 
@@ -150,8 +150,8 @@ const VoiceMemosScreen = () => {
       
       const updateVisualizer = async () => {
         const SMOOTHING_FACTOR = 0.6; // Controls responsiveness (lower = more smoothing)
-        const MIN_AMPLITUDE = 0.2;
-        const MAX_AMPLITUDE = 1;
+        const MIN_AMPLITUDE = 0.3;
+        const MAX_AMPLITUDE = 0.8;
         const PEAK_HOLD_DECAY = 0.05; // Decay for falling peaks
       
         try {
