@@ -41,6 +41,7 @@ const VoiceMemosScreen = () => {
   const [liveTranscription, setLiveTranscription] = useState('');
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0));
+  const [showRecordsList, setShowRecordsList] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const [memos, setMemos] = useState<Memo[]>([
     {
@@ -66,6 +67,53 @@ const VoiceMemosScreen = () => {
     },
   ]);
 
+  // Sample records data
+  const [recordsList, setRecordsList] = useState([
+    { id: '1', title: 'Meeting Notes', duration: '05:42', date: 'Today, 2:30 PM' },
+    { id: '2', title: 'Voice Memo 1', duration: '02:18', date: 'Yesterday, 4:15 PM' },
+    { id: '3', title: 'Project Ideas', duration: '08:33', date: 'Dec 15, 10:20 AM' },
+    { id: '4', title: 'Shopping List', duration: '01:05', date: 'Dec 14, 6:45 PM' },
+    { id: '5', title: 'Lecture Recording', duration: '25:12', date: 'Dec 13, 2:00 PM' },
+  ]);
+
+  // Function to handle records access button click
+  const handleAccessRecords = () => {
+    if (!showRecordsList) {
+      setShowRecordsList(true);
+      
+      // Start expansion animation
+      recordsButtonScale.value = withSpring(1.2, {
+        damping: 15,
+        stiffness: 300,
+      }, () => {
+        // After button scales up, expand the list
+        recordsBackdropOpacity.value = withTiming(1, { duration: 300 });
+        recordsListScale.value = withSpring(1, {
+          damping: 20,
+          stiffness: 400,
+        });
+        recordsListOpacity.value = withTiming(1, { duration: 400 });
+      });
+    }
+  };
+
+  // Function to close records list
+  const handleCloseRecords = () => {
+    // Reverse animation
+    recordsListOpacity.value = withTiming(0, { duration: 200 });
+    recordsListScale.value = withSpring(0, {
+      damping: 20,
+      stiffness: 400,
+    });
+    recordsBackdropOpacity.value = withTiming(0, { duration: 300 }, () => {
+      recordsButtonScale.value = withSpring(1, {
+        damping: 15,
+        stiffness: 300,
+      });
+      runOnJS(setShowRecordsList)(false);
+    });
+  };
+
   // Animation values
   const recordButtonScale = useSharedValue(1);
   const recordButtonOpacity = useSharedValue(1);
@@ -88,7 +136,13 @@ const VoiceMemosScreen = () => {
   // Individual position animations for each circle
   const circlePositions = Array.from({ length: memos.length }, () => useSharedValue(0));
   const circleScales = Array.from({ length: memos.length }, () => useSharedValue(1));
-  const circleOpacities = Array.from({ length: memos.length }, () => useSharedValue(1));
+  const circleOpacities = Array.from({ length: memos.length }, () => useSharedValue(1)); // Start with full opacity for Android
+
+  // Animation values for records list expansion
+  const recordsButtonScale = useSharedValue(1);
+  const recordsListScale = useSharedValue(0);
+  const recordsListOpacity = useSharedValue(0);
+  const recordsBackdropOpacity = useSharedValue(0);
 
   // Get current title based on active circle
   const getCurrentTitle = () => {
@@ -182,7 +236,7 @@ const VoiceMemosScreen = () => {
       const newVisualPosition = newVisualOrder.indexOf(index);
       const targetPosition = newVisualPosition * 160;
       
-      // Calculate target scale and opacity
+      // Calculate target scale and opacity with Android-safe minimums
       let targetScale, targetOpacity;
       if (index === newIndex) {
         targetScale = 1;
@@ -192,13 +246,14 @@ const VoiceMemosScreen = () => {
         targetScale = interpolate(
           distance,
           [0, 1, 2, 3],
-          [1, 0.9, 0.75, 0.6],
+          [1, 0.95, 0.85, 0.75],
           Extrapolate.CLAMP
         );
+        // Higher minimum opacity for Android visibility
         targetOpacity = interpolate(
           distance,
           [0, 1, 2, 3],
-          [1, 0.8, 0.6, 0.4],
+          [1, 0.95, 0.9, 0.85],
           Extrapolate.CLAMP
         );
       }
@@ -218,7 +273,7 @@ const VoiceMemosScreen = () => {
           stiffness: 300,
         });
         
-        // Animate opacity
+        // Animate opacity with minimum value
         circleOpacities[index].value = withTiming(targetOpacity, {
           duration: 400,
         });
@@ -518,12 +573,15 @@ const VoiceMemosScreen = () => {
         zIndex = 90 - (visualPosition * 10);
       }
 
+      // Ensure high minimum opacity for Android visibility
+      const finalOpacity = Math.max(0.85, circleOpacities[index].value);
+
       return {
         transform: [
           { translateY: circlePositions[index].value },
           { scale: circleScales[index].value },
         ],
-        opacity: circleOpacities[index].value,
+        opacity: finalOpacity,
         zIndex: zIndex,
       };
     });
@@ -660,6 +718,28 @@ const VoiceMemosScreen = () => {
                     {liveTranscription || 'Start recording to see live transcription...'}
                   </Text>
                 </View>
+              ) : index === 1 ? (
+                // Access Records button for Record Book circle
+                <View style={styles.recordsAccessContainer}>
+                  <Text style={styles.memoTitle}>{memo.title}</Text>
+                  
+                  <Animated.View style={[
+                    styles.accessRecordsButtonContainer,
+                    useAnimatedStyle(() => ({
+                      transform: [{ scale: recordsButtonScale.value }],
+                    }))
+                  ]}>
+                    <TouchableOpacity
+                      onPress={handleAccessRecords}
+                      style={styles.accessRecordsButton}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.accessRecordsText}>Access Records</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                  
+                  <Text style={styles.recordsCount}>5 recordings</Text>
+                </View>
               ) : (
                 // Regular memo controls for other circles
                 <>
@@ -701,6 +781,64 @@ const VoiceMemosScreen = () => {
       <View style={styles.visualizerContainer}>
         <View style={styles.recordVisualizerRing} />
       </View>
+    );
+  };
+
+  // Records List Component
+  const RecordsList = ({ 
+    records, 
+    onClose, 
+    listScale, 
+    listOpacity, 
+    backdropOpacity 
+  }: {
+    records: any[];
+    onClose: () => void;
+    listScale: Animated.SharedValue<number>;
+    listOpacity: Animated.SharedValue<number>;
+    backdropOpacity: Animated.SharedValue<number>;
+  }) => {
+    const backdropStyle = useAnimatedStyle(() => ({
+      opacity: backdropOpacity.value,
+    }));
+
+    const listStyle = useAnimatedStyle(() => ({
+      transform: [{ scale: listScale.value }],
+      opacity: listOpacity.value,
+    }));
+
+    return (
+      <Animated.View style={[styles.recordsOverlay, backdropStyle]}>
+        <TouchableOpacity 
+          style={styles.recordsBackdrop} 
+          onPress={onClose}
+          activeOpacity={1}
+        />
+        
+        <Animated.View style={[styles.recordsContainer, listStyle]}>
+          <View style={styles.recordsHeader}>
+            <Text style={styles.recordsTitle}>All Recordings</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={records}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.recordItem}>
+                <View style={styles.recordInfo}>
+                  <Text style={styles.recordTitle}>{item.title}</Text>
+                  <Text style={styles.recordDate}>{item.date}</Text>
+                </View>
+                <Text style={styles.recordDuration}>{item.duration}</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </Animated.View>
+      </Animated.View>
     );
   };
 
@@ -759,6 +897,17 @@ const VoiceMemosScreen = () => {
             <Text style={styles.recordInstruction}>Hold to record a new memo</Text>
           </View>
         </View>
+        
+        {/* Records List Overlay */}
+        {showRecordsList && (
+          <RecordsList
+            records={recordsList}
+            onClose={handleCloseRecords}
+            listScale={recordsListScale}
+            listOpacity={recordsListOpacity}
+            backdropOpacity={recordsBackdropOpacity}
+          />
+        )}
       </View>
     </GestureHandlerRootView>
   );
@@ -791,7 +940,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: 200,
-    marginTop: Platform.OS === 'android' ? -400 : -200,
+    marginTop: Platform.OS === 'android' ? -250 : -200,
   },
   circleContainer: {
     position: 'absolute',
@@ -799,6 +948,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     // Force square aspect ratio to ensure perfect circles
     aspectRatio: 1,
+    // Android-specific rendering optimizations
+    ...Platform.select({
+      android: {
+        renderToHardwareTextureAndroid: true,
+        shouldRasterizeIOS: false,
+        // Force layer type for proper rendering
+        elevation: 3,
+        // Ensure proper compositing
+        backgroundColor: 'transparent',
+        // Force hardware acceleration with perspective
+        transform: [{ perspective: 1000 }],
+        // Prevent rendering artifacts
+        overflow: 'visible',
+      },
+      ios: {
+        shouldRasterizeIOS: true,
+      },
+    }),
   },
   touchableCircle: {
     flex: 1, // Make TouchableOpacity take full size of the circle
@@ -819,12 +986,17 @@ const styles = StyleSheet.create({
     // Android-specific circle fixes
     ...Platform.select({
       android: {
-        borderWidth: 1,
-        borderColor: '#E5E5EA',
+        borderWidth: 3,
+        borderColor: '#D1D1D6',
         // Force hardware acceleration for smooth circles
         renderToHardwareTextureAndroid: true,
-        // Ensure consistent rendering
         shouldRasterizeIOS: true,
+        // Enhanced elevation for better visibility
+        elevation: 12,
+        // Solid white background
+        backgroundColor: '#FFFFFF',
+        // Add subtle transform for GPU acceleration
+        transform: [{ perspective: 1000 }],
       },
       ios: {
         borderWidth: 0.5,
@@ -849,17 +1021,26 @@ const styles = StyleSheet.create({
     // Android-specific fixes for perfect circles
     ...Platform.select({
       android: {
-        borderWidth: 0.5,
-        borderColor: 'rgba(229, 229, 234, 0.3)',
+        borderWidth: 2,
+        borderColor: '#D1D1D6',
         // Ensure smooth rendering
         renderToHardwareTextureAndroid: true,
         shouldRasterizeIOS: true,
         // Force circular clipping
         overflow: 'hidden',
+        // Full opacity for visibility
+        opacity: 1,
+        // Enhanced elevation
+        elevation: 8,
+        // Solid background
+        backgroundColor: '#FFFFFF',
+        // GPU acceleration
+        transform: [{ perspective: 1000 }],
       },
       ios: {
         borderWidth: 0.1,
         borderColor: 'transparent',
+        backgroundColor: '#FFFFFF',
         // Add subtle inner shadow for depth
         shadowColor: '#000',
         shadowOffset: {
@@ -1131,6 +1312,116 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  recordsAccessContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  accessRecordsButtonContainer: {
+    width: 170,
+    height: 60,
+    backgroundColor: '#FF3B30',
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  accessRecordsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accessRecordsText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  accessRecordsIcon: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  recordsCount: {
+    fontSize: 13,
+    color: '#8E8E93',
+    fontWeight: '400',
+  },
+  recordsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  recordsBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  recordsContainer: {
+    width: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  recordsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  recordsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  closeButtonText: {
+    fontSize: 24,
+    color: '#8E8E93',
+  },
+  recordItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E5EA',
+  },
+  recordInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  recordTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  recordDate: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+  recordDuration: {
+    fontSize: 14,
+    color: '#8E8E93',
+    fontWeight: '400',
   },
 });
 
