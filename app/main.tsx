@@ -70,16 +70,9 @@ const VoiceMemosScreen = () => {
   const recordButtonScale = useSharedValue(1);
   const recordButtonOpacity = useSharedValue(1);
   
-  // Animated title values for smooth seamless transitions
-  const oldTitleTranslateY = useSharedValue(0);
-  const oldTitleOpacity = useSharedValue(1);
-  const newTitleTranslateY = useSharedValue(30); // Starts below
-  const newTitleOpacity = useSharedValue(0);
-  
-  // Track titles for seamless transition
-  const [displayTitle, setDisplayTitle] = useState('CAPTURE\nNOW');
-  const [previousTitle, setPreviousTitle] = useState('CAPTURE\nNOW');
-  const [isAnimating, setIsAnimating] = useState(false);
+  // Animated title values for smooth transitions
+  const titleTranslateY = useSharedValue(0);
+  const titleOpacity = useSharedValue(1);
   
   // Audio visualizer animation values - 128 bars for denser circular visualizer
   const visualizerBars = Array.from({ length: 128 }, () => useSharedValue(0.3));
@@ -109,40 +102,24 @@ const VoiceMemosScreen = () => {
 
   // Animate title change when currentIndex changes
   useEffect(() => {
-    const newTitle = getCurrentTitle();
-    
-    if (newTitle !== displayTitle && !isAnimating) {
-      setIsAnimating(true);
-      setPreviousTitle(displayTitle);
+    // Start fade out animation
+    titleOpacity.value = withTiming(0, {
+      duration: 150,
+    }, () => {
+      // At the end of fade out, start slide and fade in
+      titleTranslateY.value = -30; // Start from above
       
-      // Start seamless transition - old text slides up and fades out
-      oldTitleTranslateY.value = withTiming(-20, { duration: 200 });
-      oldTitleOpacity.value = withTiming(0, { duration: 200 });
+      // Animate slide down and fade in simultaneously
+      titleTranslateY.value = withSpring(0, {
+        damping: 20,
+        stiffness: 400,
+        mass: 0.6,
+      });
       
-      // New text slides up from below and fades in (slight delay for overlap)
-      setTimeout(() => {
-        setDisplayTitle(newTitle);
-        newTitleTranslateY.value = 20; // Reset to start position
-        newTitleOpacity.value = 0;
-        
-        newTitleTranslateY.value = withSpring(0, {
-          damping: 20,
-          stiffness: 400,
-          mass: 0.6,
-        });
-        
-        newTitleOpacity.value = withTiming(1, {
-          duration: 300,
-        }, () => {
-          // After animation completes, reset for next transition
-          oldTitleTranslateY.value = 0;
-          oldTitleOpacity.value = 1;
-          newTitleTranslateY.value = 30;
-          newTitleOpacity.value = 0;
-          setIsAnimating(false);
-        });
-      }, 100); // Small overlap for seamless effect
-    }
+      titleOpacity.value = withTiming(1, {
+        duration: 300,
+      });
+    });
   }, [currentIndex]);
 
   // Initialize circle positions on mount
@@ -733,29 +710,12 @@ const VoiceMemosScreen = () => {
         <SafeAreaView style={styles.safeArea}>
           <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
           
-          <View style={styles.header}>
-            {/* Old title - slides out */}
-            <Animated.View style={[
-              styles.titleContainer,
-              useAnimatedStyle(() => ({
-                transform: [{ translateY: oldTitleTranslateY.value }],
-                opacity: oldTitleOpacity.value,
-              }))
-            ]}>
-              <Text style={styles.title}>{previousTitle}</Text>
-            </Animated.View>
-            
-            {/* New title - slides in */}
-            <Animated.View style={[
-              styles.titleContainer,
-              useAnimatedStyle(() => ({
-                transform: [{ translateY: newTitleTranslateY.value }],
-                opacity: newTitleOpacity.value,
-              }))
-            ]}>
-              <Text style={styles.title}>{displayTitle}</Text>
-            </Animated.View>
-          </View>
+          <Animated.View style={[styles.header, useAnimatedStyle(() => ({
+            transform: [{ translateY: titleTranslateY.value }],
+            opacity: titleOpacity.value,
+          }))]}>
+            <Text style={styles.title}>{currentTitle}</Text>
+          </Animated.View>
           
           <View style={styles.circlesContainer}>
             <PanGestureHandler onGestureEvent={panGestureHandler}>
@@ -825,15 +785,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 80,
     marginTop: Platform.OS === 'android' ? 70 : 20,
-  },
-  titleContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   circlesContainer: {
     flex: 1,
