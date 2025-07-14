@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,19 +8,20 @@ import {
   StyleSheet,
   Dimensions,
   Platform,
+  FlatList,
 } from 'react-native';
-import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withRepeat,
   withTiming,
-  useAnimatedGestureHandler,
-  runOnJS,
   interpolate,
   Extrapolate,
+  useAnimatedGestureHandler,
+  runOnJS,
 } from 'react-native-reanimated';
+import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Audio } from 'expo-av';
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -40,6 +41,7 @@ const VoiceMemosScreen = () => {
   const [liveTranscription, setLiveTranscription] = useState('');
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0));
+  const flatListRef = useRef<FlatList>(null);
   const [memos, setMemos] = useState<Memo[]>([
     {
       id: '1',
@@ -67,13 +69,33 @@ const VoiceMemosScreen = () => {
   // Animation values
   const recordButtonScale = useSharedValue(1);
   const recordButtonOpacity = useSharedValue(1);
-  const translateY = useSharedValue(0);
   
-  // Animated title values for smooth transitions
-  const titleTranslateY = useSharedValue(0);
+  // Animated title values for smooth seamless transitions
+  const oldTitleTranslateY = useSharedValue(0);
+  const oldTitleOpacity = useSharedValue(1);
+  const newTitleTranslateY = useSharedValue(30); // Starts below
+  const newTitleOpacity = useSharedValue(0);
   
-  // Audio visualizer animation values - 64 bars for denser circular visualizer
+  // Track titles for seamless transition
+  const [displayTitle, setDisplayTitle] = useState('CAPTURE\nNOW');
+  const [previousTitle, setPreviousTitle] = useState('CAPTURE\nNOW');
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Audio visualizer animation values - 128 bars for denser circular visualizer
   const visualizerBars = Array.from({ length: 128 }, () => useSharedValue(0.3));
+
+  // Gesture values for swipe navigation
+  const translateY = useSharedValue(0);
+  const gestureActive = useSharedValue(false);
+
+  // Animation values for smooth circle transitions
+  const circleTransition = useSharedValue(0);
+  const isTransitioning = useSharedValue(false);
+
+  // Individual position animations for each circle
+  const circlePositions = Array.from({ length: memos.length }, () => useSharedValue(0));
+  const circleScales = Array.from({ length: memos.length }, () => useSharedValue(1));
+  const circleOpacities = Array.from({ length: memos.length }, () => useSharedValue(1));
 
   // Get current title based on active circle
   const getCurrentTitle = () => {
@@ -87,14 +109,186 @@ const VoiceMemosScreen = () => {
 
   // Animate title change when currentIndex changes
   useEffect(() => {
-    // Smooth slide transition without blinking
-    titleTranslateY.value = -30; // Start from above
-    titleTranslateY.value = withSpring(0, {
-      damping: 20,
-      stiffness: 400,
-      mass: 0.6,
-    });
+    const newTitle = getCurrentTitle();
+    
+    if (newTitle !== displayTitle && !isAnimating) {
+      setIsAnimating(true);
+      setPreviousTitle(displayTitle);
+      
+      // Start seamless transition - old text slides up and fades out
+      oldTitleTranslateY.value = withTiming(-20, { duration: 200 });
+      oldTitleOpacity.value = withTiming(0, { duration: 200 });
+      
+      // New text slides up from below and fades in (slight delay for overlap)
+      setTimeout(() => {
+        setDisplayTitle(newTitle);
+        newTitleTranslateY.value = 20; // Reset to start position
+        newTitleOpacity.value = 0;
+        
+        newTitleTranslateY.value = withSpring(0, {
+          damping: 20,
+          stiffness: 400,
+          mass: 0.6,
+        });
+        
+        newTitleOpacity.value = withTiming(1, {
+          duration: 300,
+        }, () => {
+          // After animation completes, reset for next transition
+          oldTitleTranslateY.value = 0;
+          oldTitleOpacity.value = 1;
+          newTitleTranslateY.value = 30;
+          newTitleOpacity.value = 0;
+          setIsAnimating(false);
+        });
+      }, 100); // Small overlap for seamless effect
+    }
   }, [currentIndex]);
+
+  // Initialize circle positions on mount
+  useEffect(() => {
+    // Set initial positions based on currentIndex
+    animateCirclesToNewPositions(currentIndex);
+  }, []);
+
+  // Function to change index (callable from gesture handler)
+  const changeIndex = (newIndex: number) => {
+    if (newIndex !== currentIndex && !isTransitioning.value) {
+      isTransitioning.value = true;
+      
+      // Update the index
+      setCurrentIndex(newIndex);
+      
+      // Animate all circles to new positions
+      animateCirclesToNewPositions(newIndex);
+      
+      // Reset transition flag after animation
+      setTimeout(() => {
+        isTransitioning.value = false;
+      }, 700); // Slightly longer than animation duration
+    }
+  };
+
+  // Function for smooth circle click transitions
+  const handleCircleClick = (newIndex: number) => {
+    if (newIndex !== currentIndex && !isTransitioning.value) {
+      isTransitioning.value = true;
+      
+      // Update the index
+      setCurrentIndex(newIndex);
+      
+      // Animate all circles to new positions
+      animateCirclesToNewPositions(newIndex);
+      
+      // Reset transition flag after animation
+      setTimeout(() => {
+        isTransitioning.value = false;
+      }, 700); // Slightly longer than animation duration
+    }
+  };
+
+  // Function to animate circles to their new positions
+  const animateCirclesToNewPositions = (newIndex: number) => {
+    // Calculate new visual order
+    let newVisualOrder: number[] = [];
+    
+    if (newIndex === 0) {
+      newVisualOrder = [0, 1, 2];
+    } else if (newIndex === 1) {
+      newVisualOrder = [1, 2, 0];
+    } else if (newIndex === 2) {
+      newVisualOrder = [2, 0, 1];
+    }
+
+    // Animate each circle to its new position with staggered timing
+    memos.forEach((_, index) => {
+      const newVisualPosition = newVisualOrder.indexOf(index);
+      const targetPosition = newVisualPosition * 160;
+      
+      // Calculate target scale and opacity
+      let targetScale, targetOpacity;
+      if (index === newIndex) {
+        targetScale = 1;
+        targetOpacity = 1;
+      } else {
+        const distance = newVisualPosition;
+        targetScale = interpolate(
+          distance,
+          [0, 1, 2, 3],
+          [1, 0.9, 0.75, 0.6],
+          Extrapolate.CLAMP
+        );
+        targetOpacity = interpolate(
+          distance,
+          [0, 1, 2, 3],
+          [1, 0.8, 0.6, 0.4],
+          Extrapolate.CLAMP
+        );
+      }
+
+      // Staggered animation timing using setTimeout
+      const delay = newVisualPosition * 50; // 50ms stagger between circles
+      
+      const animateCircle = () => {
+        // Animate position
+        circlePositions[index].value = withTiming(targetPosition, {
+          duration: 600,
+        });
+        
+        // Animate scale
+        circleScales[index].value = withSpring(targetScale, {
+          damping: 15,
+          stiffness: 300,
+        });
+        
+        // Animate opacity
+        circleOpacities[index].value = withTiming(targetOpacity, {
+          duration: 400,
+        });
+      };
+
+      if (delay > 0) {
+        setTimeout(animateCircle, delay);
+      } else {
+        animateCircle();
+      }
+    });
+  };
+
+  // Pan gesture handler for swipe navigation
+  const panGestureHandler = useAnimatedGestureHandler({
+    onStart: () => {
+      gestureActive.value = true;
+    },
+    onActive: (event) => {
+      // Store translation but don't apply visual feedback
+      translateY.value = event.translationY;
+    },
+    onEnd: (event) => {
+      gestureActive.value = false;
+      
+      const threshold = 80; // Minimum swipe distance
+      const velocity = event.velocityY;
+      
+      let newIndex = currentIndex;
+      
+      // Determine swipe direction and change index
+      if (event.translationY > threshold || velocity > 500) {
+        // Swipe down - go to previous (wrap around)
+        newIndex = currentIndex > 0 ? currentIndex - 1 : memos.length - 1;
+      } else if (event.translationY < -threshold || velocity < -500) {
+        // Swipe up - go to next (wrap around)
+        newIndex = currentIndex < memos.length - 1 ? currentIndex + 1 : 0;
+      }
+      
+      // Reset translation immediately
+      translateY.value = 0;
+      
+      if (newIndex !== currentIndex) {
+        runOnJS(changeIndex)(newIndex);
+      }
+    },
+  });
 
   // Initialize audio permissions
   useEffect(() => {
@@ -270,60 +464,37 @@ const VoiceMemosScreen = () => {
     // Infinite scroll: wrap to beginning when reaching end
     const nextIndex = currentIndex < memos.length - 1 ? currentIndex + 1 : 0;
     setCurrentIndex(nextIndex);
-      // Reset translateY since circles will reposition based on new currentIndex
-      translateY.value = withSpring(0, {
-        damping: 20,
-        stiffness: 250,
-        mass: 0.5,
-      });
+    // Smooth scroll to next item
+    flatListRef.current?.scrollToIndex({
+      index: nextIndex,
+      animated: true,
+    });
   };
 
   const slideToPrev = () => {
     // Infinite scroll: wrap to end when going before beginning
     const prevIndex = currentIndex > 0 ? currentIndex - 1 : memos.length - 1;
     setCurrentIndex(prevIndex);
-      // Reset translateY since circles will reposition based on new currentIndex
-      translateY.value = withSpring(0, {
-        damping: 20,
-        stiffness: 250,
-        mass: 0.5,
-      });
+    // Smooth scroll to previous item
+    flatListRef.current?.scrollToIndex({
+      index: prevIndex,
+      animated: true,
+    });
   };
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      context.startY = translateY.value;
-      console.log('Gesture started');
-    },
-    onActive: (event, context: any) => {
-      // Allow dragging but limit the range to prevent excessive movement
-      const dampedTranslation = event.translationY * 0.4;
-      translateY.value = context.startY + dampedTranslation;
-      console.log('Gesture active:', event.translationY);
-    },
-    onEnd: (event) => {
-      console.log('Gesture ended:', event.translationY, 'velocity:', event.velocityY);
-      // Much lower thresholds for easier swiping
-      const shouldSlideUp = event.translationY < -40 && Math.abs(event.velocityY) > 100;
-      const shouldSlideDown = event.translationY > 40 && Math.abs(event.velocityY) > 100;
-
-      if (shouldSlideUp) {
-        console.log('Sliding to next');
-        runOnJS(slideToNext)();
-      } else if (shouldSlideDown) {
-        console.log('Sliding to prev');
-        runOnJS(slideToPrev)();
-      } else {
-        console.log('Snapping back');
-        // Snap back to original position
-        translateY.value = withSpring(0, {
-          damping: 25,
-          stiffness: 300,
-          mass: 0.6,
-        });
+  // Handle carousel scroll events
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      const newIndex = viewableItems[0].index;
+      if (newIndex !== currentIndex) {
+        setCurrentIndex(newIndex);
       }
-    },
-  });
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
 
   const recordButtonAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -345,76 +516,38 @@ const VoiceMemosScreen = () => {
     const progress = memo.progress;
     const isFirstCircle = index === 0;
 
+    // Updated animation style using individual circle animations
     const animatedStyle = useAnimatedStyle(() => {
-      // Calculate base position relative to current index
-      const basePosition = (index - currentIndex) * 160;
-      const gestureOffset = translateY.value;
+      // Calculate proper z-index based on visual hierarchy
+      let zIndex = 50; // Base z-index
       
-      // Always show all circles
-      const shouldShow = true;
-      
-      // Calculate visual hierarchy: main circle is largest, others get progressively smaller
-      let scale = 1;
-      let opacity = 1;
-      
-      if (index !== currentIndex) {
-        // Calculate distance from current for sizing
-        let visualDistance;
+      if (index === currentIndex) {
+        // Main circle should always be on top
+        zIndex = 100;
+      } else {
+        // Calculate visual position for proper layering
+        let visualOrder: number[] = [];
         
-        if (index > currentIndex) {
-          // Normal case: circles after current
-          visualDistance = index - currentIndex;
-        } else {
-          // Wrap-around case: circles before current appear after the end
-          visualDistance = (memos.length - currentIndex) + index;
+        if (currentIndex === 0) {
+          visualOrder = [0, 1, 2];
+        } else if (currentIndex === 1) {
+          visualOrder = [1, 2, 0];
+        } else if (currentIndex === 2) {
+          visualOrder = [2, 0, 1];
         }
         
-        // Progressive scaling: each circle below gets smaller
-        scale = interpolate(
-          visualDistance,
-          [0, 1, 2, 3],
-          [1, 0.9, 0.75, 0.6],
-          Extrapolate.CLAMP
-        );
+        const visualPosition = visualOrder.indexOf(index);
+        // Higher visual position (lower on screen) should have lower z-index
+        zIndex = 90 - (visualPosition * 10);
       }
-
-      // Smooth rotation during gesture
-      const rotation = interpolate(
-        gestureOffset,
-        [-200, 0, 200],
-        [-2, 0, 2],
-        Extrapolate.CLAMP
-      );
-
-      // Calculate final position for infinite scroll
-      let finalPosition;
-      
-      // Create the visual order explicitly for each scenario
-      let visualOrder: number[] = [];
-      
-      if (currentIndex === 0) {
-        // Circle 1 is main: [1, 2, 3]
-        visualOrder = [0, 1, 2];
-      } else if (currentIndex === 1) {
-        // Circle 2 is main: [2, 3, 1]
-        visualOrder = [1, 2, 0];
-      } else if (currentIndex === 2) {
-        // Circle 3 is main: [3, 1, 2]
-        visualOrder = [2, 0, 1];
-      }
-      
-      // Find this circle's position in the visual order
-      const visualPosition = visualOrder.indexOf(index);
-      finalPosition = visualPosition * 160 + gestureOffset;
 
       return {
         transform: [
-          { translateY: finalPosition },
-          { scale },
-          { rotateZ: `${rotation}deg` },
+          { translateY: circlePositions[index].value },
+          { scale: circleScales[index].value },
         ],
-        opacity: shouldShow ? opacity : 0,
-        zIndex: index === currentIndex ? 100 : (50 - visualPosition),
+        opacity: circleOpacities[index].value,
+        zIndex: zIndex,
       };
     });
 
@@ -464,113 +597,123 @@ const VoiceMemosScreen = () => {
 
     return (
       <Animated.View style={[styles.circleContainer, animatedStyle]}>
-        <View style={[
-          styles.circleBackground, 
-          { 
-            width: size + 40, 
-            height: size + 40, 
-            borderRadius: (size + 40) / 2,
-            overflow: 'hidden',
-          }
-        ]} />
-        
-        <View style={[
-          styles.circularProgressContainer, 
-          { 
-            width: size, 
-            height: size,
-            borderRadius: size / 2,
-            overflow: 'hidden',
-            backgroundColor: '#FFFFFF',
-          }
-        ]}>
-          {/* Audio Visualizer for first circle */}
-          <AudioVisualizerBorder />
+        <TouchableOpacity
+          activeOpacity={1.0}
+          onPress={() => {
+            if (index !== currentIndex) {
+              handleCircleClick(index);
+            }
+          }}
+          style={styles.touchableCircle}
+        >
+          <View style={[
+            styles.circleBackground, 
+            { 
+              width: size + 40, 
+              height: size + 40, 
+              borderRadius: (size + 40) / 2,
+              overflow: 'hidden',
+            }
+          ]} />
           
-          {!isFirstCircle && (
-          <View style={[styles.tickMarksContainer, {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            overflow: 'hidden',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-          }]}>
-            {Array.from({ length: 120 }).map((_, tickIndex) => {
-              const angle = (tickIndex * 3) * (Math.PI / 180);
-              const radius = (size - 20) / 2;
-              const x = size / 2 + radius * Math.cos(angle - Math.PI / 2);
-              const y = size / 2 + radius * Math.sin(angle - Math.PI / 2);
-              
-              const distanceFromCenter = Math.sqrt(
-                Math.pow(x - size / 2, 2) + Math.pow(y - size / 2, 2)
-              );
-              
-              if (distanceFromCenter > (size / 2 - 10)) {
-                return null;
-              }
-              
-              return (
-                <View
-                  key={tickIndex}
-                  style={[
-                    styles.tickMark,
-                    {
-                      left: x - 1,
-                      top: y - 2,
-                      backgroundColor: tickIndex < (progress * 120 / 100) ? '#FF3B30' : '#E5E5EA',
-                    }
-                  ]}
-                />
-              );
-            })}
-          </View>
-          )}
-          
-          <View style={[styles.centerContent, {
-            width: Math.min(160, size * 0.8),
-            height: Math.min(160, size * 0.8),
-            borderRadius: Math.min(80, size * 0.25),
-          }]}>
-            {isFirstCircle ? (
-              // Live transcription for first circle
-              <View style={styles.transcriptionContainer}>
-                <Text style={styles.transcriptionLabel}>Live Transcription</Text>
-                <Text style={styles.transcriptionText}>
-                  {liveTranscription || 'Start recording to see live transcription...'}
-                </Text>
-              </View>
-            ) : (
-              // Regular memo controls for other circles
-              <>
-            <Text style={styles.memoTitle}>{memo.title}</Text>
+          <View style={[
+            styles.circularProgressContainer, 
+            { 
+              width: size, 
+              height: size,
+              borderRadius: size / 2,
+              overflow: 'hidden',
+              backgroundColor: '#FFFFFF',
+            }
+          ]}>
+            {/* Audio Visualizer for first circle */}
+            <AudioVisualizerBorder />
             
-            <View style={styles.controlsRow}>
-              <TouchableOpacity style={styles.skipButton}>
-                <Text style={styles.skipText}>10</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                onPress={() => handlePlayPress(memo.id)}
-                style={styles.playButton}
-              >
-                <Text style={styles.playIcon}>
-                  {memo.isPlaying ? '⏸' : '▶'}
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.skipButton}>
-                <Text style={styles.skipText}>10</Text>
-              </TouchableOpacity>
+            {!isFirstCircle && (
+            <View style={[styles.tickMarksContainer, {
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              overflow: 'hidden',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+            }]}>
+              {Array.from({ length: 120 }).map((_, tickIndex) => {
+                const angle = (tickIndex * 3) * (Math.PI / 180);
+                const radius = (size - 20) / 2;
+                const x = size / 2 + radius * Math.cos(angle - Math.PI / 2);
+                const y = size / 2 + radius * Math.sin(angle - Math.PI / 2);
+                
+                const distanceFromCenter = Math.sqrt(
+                  Math.pow(x - size / 2, 2) + Math.pow(y - size / 2, 2)
+                );
+                
+                if (distanceFromCenter > (size / 2 - 10)) {
+                  return null;
+                }
+                
+                return (
+                  <View
+                    key={tickIndex}
+                    style={[
+                      styles.tickMark,
+                      {
+                        left: x - 1,
+                        top: y - 2,
+                        backgroundColor: tickIndex < (progress * 120 / 100) ? '#FF3B30' : '#E5E5EA',
+                      }
+                    ]}
+                  />
+                );
+              })}
             </View>
-            
-            <Text style={styles.duration}>{memo.duration}</Text>
-            <Text style={styles.menuDots}>•••</Text>
-              </>
             )}
+            
+            <View style={[styles.centerContent, {
+              width: Math.min(160, size * 0.8),
+              height: Math.min(160, size * 0.8),
+              borderRadius: Math.min(80, size * 0.25),
+            }]}>
+              {isFirstCircle ? (
+                // Live transcription for first circle
+                <View style={styles.transcriptionContainer}>
+                  <Text style={styles.transcriptionLabel}>Live Transcription</Text>
+                  <Text style={styles.transcriptionText}>
+                    {liveTranscription || 'Start recording to see live transcription...'}
+                  </Text>
+                </View>
+              ) : (
+                // Regular memo controls for other circles
+                <>
+              <Text style={styles.memoTitle}>{memo.title}</Text>
+              
+              <View style={styles.controlsRow}>
+                <TouchableOpacity style={styles.skipButton}>
+                  <Text style={styles.skipText}>10</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => handlePlayPress(memo.id)}
+                  style={styles.playButton}
+                >
+                  <Text style={styles.playIcon}>
+                    {memo.isPlaying ? '⏸' : '▶'}
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.skipButton}>
+                  <Text style={styles.skipText}>10</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.duration}>{memo.duration}</Text>
+              <Text style={styles.menuDots}>•••</Text>
+                </>
+              )}
+            </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Animated.View>
     );
   };
@@ -586,53 +729,75 @@ const VoiceMemosScreen = () => {
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
-        
-        <Animated.View style={[styles.header, useAnimatedStyle(() => ({
-          transform: [{ translateY: titleTranslateY.value }],
-        }))]}>
-          <Text style={styles.title}>{currentTitle}</Text>
-        </Animated.View>
-        
-        <PanGestureHandler onGestureEvent={gestureHandler}>
-          <Animated.View style={styles.circlesContainer}>
-            {memos.map((memo, index) => (
-              <CircularProgress 
-                key={memo.id}
-                memo={memo}
-                index={index}
-                isMain={index === currentIndex}
-              />
-            ))}
-          </Animated.View>
-        </PanGestureHandler>
-      </SafeAreaView>
+      <View style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
+          
+          <View style={styles.header}>
+            {/* Old title - slides out */}
+            <Animated.View style={[
+              styles.titleContainer,
+              useAnimatedStyle(() => ({
+                transform: [{ translateY: oldTitleTranslateY.value }],
+                opacity: oldTitleOpacity.value,
+              }))
+            ]}>
+              <Text style={styles.title}>{previousTitle}</Text>
+            </Animated.View>
+            
+            {/* New title - slides in */}
+            <Animated.View style={[
+              styles.titleContainer,
+              useAnimatedStyle(() => ({
+                transform: [{ translateY: newTitleTranslateY.value }],
+                opacity: newTitleOpacity.value,
+              }))
+            ]}>
+              <Text style={styles.title}>{displayTitle}</Text>
+            </Animated.View>
+          </View>
+          
+          <View style={styles.circlesContainer}>
+            <PanGestureHandler onGestureEvent={panGestureHandler}>
+              <Animated.View style={styles.gestureContainer}>
+                {memos.map((memo, index) => (
+                  <CircularProgress 
+                    key={memo.id}
+                    memo={memo}
+                    index={index}
+                    isMain={index === currentIndex}
+                  />
+                ))}
+              </Animated.View>
+            </PanGestureHandler>
+          </View>
+        </SafeAreaView>
 
-      {/* Curved Record Section */}
-      <View style={styles.recordSection}>
-        <View style={styles.topCurvedSection} />
-        <View style={styles.leftCurvedSection} />
-        <View style={styles.leftCurvedSectionBar} />
-        <View style={styles.rightCurvedSection} />
-        <View style={styles.rightCurvedSectionBar} />
-        <View style={styles.bottomRectSection} />
-        
-        <View style={styles.recordButtonWrapper}>
-          <AudioVisualizer />
-            <AnimatedTouchableOpacity
-              onPress={handleRecordPress}
-              style={[
-                styles.recordButton,
-                recordButtonAnimatedStyle,
-              ]}
-            >
-              <View style={styles.recordButtonInner} />
-            </AnimatedTouchableOpacity>
-        </View>
-        
-        <View style={styles.instructionWrapper}>
-          <Text style={styles.recordInstruction}>Hold to record a new memo</Text>
+        {/* Curved Record Section */}
+        <View style={styles.recordSection}>
+          <View style={styles.topCurvedSection} />
+          <View style={styles.leftCurvedSection} />
+          <View style={styles.leftCurvedSectionBar} />
+          <View style={styles.rightCurvedSection} />
+          <View style={styles.rightCurvedSectionBar} />
+          <View style={styles.bottomRectSection} />
+          
+          <View style={styles.recordButtonWrapper}>
+            <AudioVisualizer />
+              <AnimatedTouchableOpacity
+                onPress={handleRecordPress}
+                style={[
+                  styles.recordButton,
+                  recordButtonAnimatedStyle,
+                ]}
+              >
+                <View style={styles.recordButtonInner} />
+              </AnimatedTouchableOpacity>
+          </View>
+          
+          <View style={styles.instructionWrapper}>
+            <Text style={styles.recordInstruction}>Hold to record a new memo</Text>
+          </View>
         </View>
       </View>
     </GestureHandlerRootView>
@@ -661,12 +826,21 @@ const styles = StyleSheet.create({
     lineHeight: 80,
     marginTop: Platform.OS === 'android' ? 70 : 20,
   },
+  titleContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   circlesContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: 200,
-    marginTop: Platform.OS === 'android' ? -450 : -400,
+    marginTop: Platform.OS === 'android' ? -400 : -200,
   },
   circleContainer: {
     position: 'absolute',
@@ -674,6 +848,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     // Force square aspect ratio to ensure perfect circles
     aspectRatio: 1,
+  },
+  touchableCircle: {
+    flex: 1, // Make TouchableOpacity take full size of the circle
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circleBackground: {
     position: 'absolute',
@@ -996,6 +1175,11 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     borderWidth: 1,
     borderColor: '#E5E5EA',
+  },
+  gestureContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
