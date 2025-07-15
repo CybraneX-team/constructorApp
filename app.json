@@ -44,6 +44,10 @@
         "projectId": "167672c0-1fb8-4f2e-845f-cfb97b5ddd81"
       }
     },
-    "owner": "saiyam12"
+    "owner": "saiyam12",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/167672c0-1fb8-4f2e-845f-cfb97b5ddd81"
+    }
   }
 }
