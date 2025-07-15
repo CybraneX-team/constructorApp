@@ -16,6 +16,7 @@ import { RecordButton } from '../components/RecordButton';
 import CircularProgress from '../components/CircularProgress';
 import RecordsList from '../components/RecordsList';
 import RecordDetailView from '../components/RecordDetailView';
+import SearchOverlay from '../components/SearchOverlay';
 
 const VoiceMemosScreen = () => {
   const {
@@ -25,6 +26,7 @@ const VoiceMemosScreen = () => {
     liveTranscription,
     showRecordsList,
     showRecordDetail,
+    showSearchOverlay,
     selectedRecord,
     memos,
     recordsList,
@@ -45,6 +47,8 @@ const VoiceMemosScreen = () => {
     recordDetailScale,
     recordDetailOpacity,
     recordDetailBackdropOpacity,
+    searchOverlayTranslateY,
+    searchOverlayOpacity,
     
     // Functions
     getCurrentTitle,
@@ -56,6 +60,8 @@ const VoiceMemosScreen = () => {
     handleCloseRecordDetail,
     handleRecordPress,
     handlePlayPress,
+    handleSearchPress,
+    handleCloseSearch,
   } = useVoiceMemos();
 
   // Memoized current title for performance
@@ -93,6 +99,7 @@ const VoiceMemosScreen = () => {
                     handleAccessRecords={handleAccessRecords}
                     handlePlayPress={handlePlayPress}
                     handleCircleClick={handleCircleClick}
+                    handleSearchPress={handleSearchPress}
                   />
                 ))}
               </Animated.View>
@@ -128,6 +135,16 @@ const VoiceMemosScreen = () => {
             backdropOpacity={recordDetailBackdropOpacity} 
           />
         )}
+
+        {/* Search Overlay */}
+        <SearchOverlay
+          isVisible={showSearchOverlay}
+          onClose={handleCloseSearch}
+          searchOverlayTranslateY={searchOverlayTranslateY}
+          searchOverlayOpacity={searchOverlayOpacity}
+          records={recordsList}
+          onRecordClick={handleRecordClick}
+        />
       </View>
     </GestureHandlerRootView>
   );

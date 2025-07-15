@@ -10,6 +10,9 @@ import {
 } from 'react-native-reanimated';
 import { Memo, RecordDetail } from '../components/types';
 import { getDetailedRecord, initialMemos, initialRecordsList } from '../utils/recordsData';
+import { Dimensions } from 'react-native';
+
+const screenHeight = Dimensions.get('window').height;
 
 export const useVoiceMemos = () => {
   // State
@@ -20,6 +23,7 @@ export const useVoiceMemos = () => {
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0));
   const [showRecordsList, setShowRecordsList] = useState(false);
   const [showRecordDetail, setShowRecordDetail] = useState(false);
+  const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<RecordDetail | null>(null);
   const [memos, setMemos] = useState<Memo[]>(initialMemos);
   const [recordsList, setRecordsList] = useState(initialRecordsList);
@@ -44,6 +48,8 @@ export const useVoiceMemos = () => {
   const recordDetailScale = useSharedValue(0);
   const recordDetailOpacity = useSharedValue(0);
   const recordDetailBackdropOpacity = useSharedValue(0);
+  const searchOverlayTranslateY = useSharedValue(screenHeight);
+  const searchOverlayOpacity = useSharedValue(0);
 
   // Get current title based on active circle
   const getCurrentTitle = () => {
@@ -200,13 +206,38 @@ export const useVoiceMemos = () => {
 
   const handleCloseRecordDetail = () => {
     recordDetailOpacity.value = withTiming(0, { duration: 200 });
-    recordDetailScale.value = withSpring(0, {
+    recordDetailScale.value = withSpring(0.8, {
       damping: 15,
       stiffness: 300,
     });
-    recordDetailBackdropOpacity.value = withTiming(0, { duration: 300 }, () => {
+    recordDetailBackdropOpacity.value = withTiming(0, { duration: 200 }, () => {
       runOnJS(setShowRecordDetail)(false);
       runOnJS(setSelectedRecord)(null);
+    });
+  };
+
+  // Search overlay functions
+  const handleSearchPress = () => {
+    setShowSearchOverlay(true);
+    // Ultra-smooth entrance with custom spring physics
+    searchOverlayTranslateY.value = withSpring(0, {
+      damping: 35,
+      stiffness: 150,
+      mass: 1.5,
+    });
+    // Gradual opacity fade-in
+    searchOverlayOpacity.value = withTiming(1, { duration: 800 });
+  };
+
+  const handleCloseSearch = () => {
+    // Dramatic exit animation
+    searchOverlayTranslateY.value = withSpring(screenHeight, {
+      damping: 40,
+      stiffness: 200,
+      mass: 1.2,
+    });
+    searchOverlayOpacity.value = withTiming(0, { duration: 600 }, () => {
+      runOnJS(setShowSearchOverlay)(false);
     });
   };
 
@@ -405,6 +436,7 @@ export const useVoiceMemos = () => {
     audioLevels,
     showRecordsList,
     showRecordDetail,
+    showSearchOverlay,
     selectedRecord,
     memos,
     recordsList,
@@ -429,6 +461,8 @@ export const useVoiceMemos = () => {
     recordDetailScale,
     recordDetailOpacity,
     recordDetailBackdropOpacity,
+    searchOverlayTranslateY,
+    searchOverlayOpacity,
     
     // Functions
     getCurrentTitle,
@@ -442,5 +476,7 @@ export const useVoiceMemos = () => {
     handleCloseRecordDetail,
     handleRecordPress,
     handlePlayPress,
+    handleSearchPress,
+    handleCloseSearch,
   };
 }; 

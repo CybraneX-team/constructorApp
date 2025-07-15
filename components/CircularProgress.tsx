@@ -29,6 +29,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   handleAccessRecords,
   handlePlayPress,
   handleCircleClick,
+  handleSearchPress,
 }) => {
   const size = isMain ? 320 : 280;
   const progress = memo.progress;
@@ -186,6 +187,21 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
                 </Animated.View>
                 
                 <Text style={styles.recordsCount}>5 recordings</Text>
+              </View>
+            ) : index === 2 ? (
+              // Search interface for the 3rd circle
+              <View style={styles.searchContainer}>
+                <Text style={styles.memoTitle}>{memo.title}</Text>
+                
+                <TouchableOpacity
+                  onPress={() => handleSearchPress?.()}
+                  style={styles.searchButton}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.searchButtonText}>Search</Text>
+                </TouchableOpacity>
+                
+                <Text style={styles.searchDescription}>Find recordings by chatting in natural language</Text>
               </View>
             ) : (
               // Regular memo controls for other circles
@@ -473,6 +489,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8E8E93',
     fontWeight: '400',
+  },
+  searchContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 170,
+    height: 60,
+    backgroundColor: '#000',
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  searchIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  searchIcon: {
+    fontSize: 24,
+    color: '#000000',
+  },
+  searchButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  searchDescription: {
+    fontSize: 13,
+    color: '#8E8E93',
+    fontWeight: '400',
+    textAlign: 'center',
   },
 });
 
