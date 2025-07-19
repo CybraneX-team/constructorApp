@@ -46,50 +46,34 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
     transform: [{ translateY: withTiming(0, { duration: 800 }) }],
   }));
 
-
   return (
     <View>
       {/* Labor Section */}
       <Animated.View style={[styles.detailSection, laborSectionStyle]}>
         <Text style={styles.sectionTitle}>LABOR</Text>
-        <View style={styles.laborTable}>
-          <View style={styles.laborHeader}>
-            <Text style={styles.laborHeaderText}>ROLE</Text>
-            <Text style={styles.laborHeaderText}>START</Text>
-            <Text style={styles.laborHeaderText}>FINISH</Text>
-            <Text style={styles.laborHeaderText}>HOURS</Text>
-            <Text style={styles.laborHeaderText}>RATE</Text>
-            <Text style={styles.laborHeaderText}>TOTAL</Text>
-          </View>
-          <LaborRow  title="Manager" data={record.laborData.manager} />
-          <LaborRow title="Foreman" data={record.laborData.foreman} />
-          <LaborRow title="Carpenter" data={record.laborData.carpenter} />
-          <LaborRow title="Skill Laborer" data={record.laborData.skillLaborer} />
-          <LaborRow title="Carpenter (Extra)" data={record.laborData.carpenterExtra} />
+        <View style={styles.cardsContainer}>
+          <LaborCard title="Manager" data={record.laborData.manager} color="#000" />
+          <LaborCard title="Foreman" data={record.laborData.foreman} color="#000" />
+          <LaborCard title="Carpenter" data={record.laborData.carpenter} color="#000" />
+          <LaborCard title="Skill Laborer" data={record.laborData.skillLaborer} color="#000" />
+          <LaborCard title="Carpenter (Extra)" data={record.laborData.carpenterExtra} color="#000" />
         </View>
       </Animated.View>
 
       {/* Subcontractors Section */}
       <Animated.View style={[styles.detailSection, subcontractorsSectionStyle]}>
         <Text style={styles.sectionTitle}>SUBCONTRACTORS</Text>
-        <View style={styles.subcontractorsTable}>
-          <View style={styles.subcontractorsHeader}>
-            <Text style={styles.subcontractorsHeaderText}>COMPANY</Text>
-            <Text style={styles.subcontractorsHeaderText}>EMPLOYEES</Text>
-            <Text style={styles.subcontractorsHeaderText}>HOURS</Text>
-          </View>
-          <View style={styles.subcontractorsRow}>
-            <Text style={styles.subcontractorsRowText}>Superior Team Rebar</Text>
-            <Text style={styles.subcontractorsRowText}>{record.subcontractors.superiorTeamRebar.employees}</Text>
-            <Text style={styles.subcontractorsRowText}>{record.subcontractors.superiorTeamRebar.hours}</Text>
-          </View>
-        </View>
+        <SubcontractorCard 
+          company="Superior Team Rebar"
+          employees={record.subcontractors.superiorTeamRebar.employees}
+          hours={record.subcontractors.superiorTeamRebar.hours}
+        />
       </Animated.View>
 
       {/* Daily Activities Section */}
       <Animated.View style={[styles.detailSection, activitiesSectionStyle]}>
         <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
-        <View style={styles.activitiesContainer}>
+        <View style={styles.activitiesCard}>
           <Text style={styles.activitiesText}>{record.dailyActivities}</Text>
         </View>
       </Animated.View>
@@ -97,80 +81,150 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
       {/* Materials Deliveries Section */}
       <Animated.View style={[styles.detailSection, materialsSectionStyle]}>
         <Text style={styles.sectionTitle}>MATERIALS DELIVERIES</Text>
-        <View style={styles.materialsTable}>
-          <View style={styles.materialsHeader}>
-            <Text style={styles.materialsHeaderText}>MATERIAL</Text>
-            <Text style={styles.materialsHeaderText}>QTY</Text>
-            <Text style={styles.materialsHeaderText}>UOM</Text>
-            <Text style={styles.materialsHeaderText}>UNIT RATE</Text>
-            <Text style={styles.materialsHeaderText}>TAX</Text>
-            <Text style={styles.materialsHeaderText}>TOTAL</Text>
-          </View>
-          <View style={styles.materialsRow}>
-            <Text style={styles.materialsRowText}>Argos Class 4 4500 PSI</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.argosClass4.qty}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.argosClass4.uom}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.argosClass4.unitRate}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.argosClass4.tax}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.argosClass4.total}</Text>
-          </View>
-          <View style={styles.materialsRow}>
-            <Text style={styles.materialsRowText}>Expansion Joint</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.expansionJoint.qty || '-'}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.expansionJoint.uom || '-'}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.expansionJoint.unitRate}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.expansionJoint.tax}</Text>
-            <Text style={styles.materialsRowText}>{record.materialsDeliveries.expansionJoint.total}</Text>
-          </View>
+        <View style={styles.cardsContainer}>
+          <MaterialCard 
+            title="Argos Class 4 4500 PSI"
+            data={record.materialsDeliveries.argosClass4}
+            color="#000"
+          />
+          <MaterialCard 
+            title="Expansion Joint"
+            data={record.materialsDeliveries.expansionJoint}
+            color="#000"
+          />
         </View>
       </Animated.View>
 
       {/* Equipment Section */}
       <Animated.View style={[styles.detailSection, equipmentSectionStyle]}>
         <Text style={styles.sectionTitle}>EQUIPMENT</Text>
-        <View style={styles.equipmentTable}>
-          <View style={styles.equipmentHeader}>
-            <Text style={styles.equipmentHeaderText}>EQUIPMENT</Text>
-            <Text style={styles.equipmentHeaderText}>DAYS</Text>
-            <Text style={styles.equipmentHeaderText}>MONTHLY RATE</Text>
-            <Text style={styles.equipmentHeaderText}>ITEM RATE</Text>
-          </View>
-          <EquipmentRow title="Truck" data={record.equipment.truck} />
-          <EquipmentRow title="14k Equipment Trailer" data={record.equipment.equipmentTrailer} />
-          <EquipmentRow title="Fuel" data={record.equipment.fuel} />
-          <EquipmentRow title="Mini Excavator" data={record.equipment.miniExcavator} />
-          <EquipmentRow title="Closed Tool Trailer" data={record.equipment.closedToolTrailer} />
-          <EquipmentRow title="Skid Stir" data={record.equipment.skidStir} />
+        <View style={styles.cardsContainer}>
+          <EquipmentCard title="Truck" data={record.equipment.truck} color="#000" />
+          <EquipmentCard title="14k Equipment Trailer" data={record.equipment.equipmentTrailer} color="#000" />
+          <EquipmentCard title="Fuel" data={record.equipment.fuel} color="#000" />
+          <EquipmentCard title="Mini Excavator" data={record.equipment.miniExcavator} color="#000" />
+          <EquipmentCard title="Closed Tool Trailer" data={record.equipment.closedToolTrailer} color="#000" />
+          <EquipmentCard title="Skid Stir" data={record.equipment.skidStir} color="#000" />
         </View>
       </Animated.View>
     </View>
   );
 };
 
-const LaborRow = ({ title, data }: { title: string; data: any }) => (
-  <View style={styles.laborRow}>
-    <Text
-        style={[styles.laborRowText, styles.roleCell]}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-    >
-        {title}
-    </Text>
-
-    <Text style={styles.laborRowText}>{data.startTime}</Text>
-    <Text style={styles.laborRowText}>{data.finishTime}</Text>
-    <Text style={styles.laborRowText}>{data.hours}</Text>
-    <Text style={styles.laborRowText}>{data.rate}</Text>
-    <Text style={styles.laborRowText}>{data.total}</Text>
+const LaborCard = ({ title, data, color }: { title: string; data: any; color: string }) => (
+  <View style={[styles.laborCard, { borderLeftColor: color }]}>
+    <View style={[styles.cardHeader, { backgroundColor: color }]}>
+      <Text style={styles.cardHeaderText}>{title}</Text>
+    </View>
+    <View style={styles.cardContent}>
+      <View style={styles.timeSection}>
+        <View style={styles.timeRow}>
+          <Text style={styles.timeLabel}>Start</Text>
+          <Text style={styles.timeValue}>{data.startTime}</Text>
+      </View>
+        <View style={styles.timeRow}>
+          <Text style={styles.timeLabel}>Finish</Text>
+          <Text style={styles.timeValue}>{data.finishTime}</Text>
+        </View>
+      </View>
+      <View style={styles.dataGrid}>
+        <View style={styles.dataItem}>
+          <Text style={styles.dataLabel}>Hours</Text>
+          <Text style={styles.dataValue}>{data.hours}</Text>
+        </View>
+        <View style={styles.dataItem}>
+          <Text style={styles.dataLabel}>Rate</Text>
+          <Text style={styles.dataValue}>{data.rate}</Text>
+        </View>
+        <View style={styles.dataItem}>
+          <Text style={styles.dataLabel}>Total</Text>
+          <Text style={[styles.dataValue, styles.totalValue]}>{data.total}</Text>
+        </View>
+      </View>
+    </View>
   </View>
 );
 
-const EquipmentRow = ({ title, data }: { title: string; data: any }) => (
-  <View style={styles.equipmentRow}>
-    <Text style={styles.equipmentRowText}>{title}</Text>
-    <Text style={styles.equipmentRowText}>{data.days}</Text>
-    <Text style={styles.equipmentRowText}>{data.monthlyRate}</Text>
-    <Text style={styles.equipmentRowText}>{data.itemRate}</Text>
+const SubcontractorCard = ({ company, employees, hours }: { company: string; employees: any; hours: any }) => (
+  <View style={styles.subcontractorCard}>
+    <View style={[styles.cardHeader, { backgroundColor: '#000' }]}>
+      <Text style={styles.cardHeaderText}>{company}</Text>
+    </View>
+    <View style={styles.cardContent}>
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{employees}</Text>
+          <Text style={styles.statLabel}>Employees</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{hours}</Text>
+          <Text style={styles.statLabel}>Hours</Text>
+        </View>
+      </View>
+    </View>
+  </View>
+);
+
+const MaterialCard = ({ title, data, color }: { title: string; data: any; color: string }) => (
+  <View style={[styles.materialCard, { borderLeftColor: color }]}>
+    <View style={[styles.cardHeader, { backgroundColor: color }]}>
+      <Text style={styles.cardHeaderText}>{title}</Text>
+    </View>
+    <View style={styles.cardContent}>
+      <View style={styles.materialGrid}>
+        <View style={styles.materialRow}>
+          <View style={styles.materialItem}>
+            <Text style={styles.dataLabel}>Quantity</Text>
+            <Text style={styles.dataValue}>{data.qty || '-'}</Text>
+          </View>
+          <View style={styles.materialItem}>
+            <Text style={styles.dataLabel}>UOM</Text>
+            <Text style={styles.dataValue}>{data.uom || '-'}</Text>
+          </View>
+        </View>
+        <View style={styles.materialRow}>
+          <View style={styles.materialItem}>
+            <Text style={styles.dataLabel}>Unit Rate</Text>
+            <Text style={styles.dataValue}>{data.unitRate}</Text>
+          </View>
+          <View style={styles.materialItem}>
+            <Text style={styles.dataLabel}>Tax</Text>
+            <Text style={styles.dataValue}>{data.tax}</Text>
+          </View>
+        </View>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total Amount</Text>
+          <Text style={[styles.totalValue, styles.materialTotal]}>{data.total}</Text>
+        </View>
+      </View>
+    </View>
+  </View>
+);
+
+const EquipmentCard = ({ title, data, color }: { title: string; data: any; color: string }) => (
+  <View style={[styles.equipmentCard, { borderLeftColor: color }]}>
+    <View style={[styles.cardHeader, { backgroundColor: color }]}>
+      <Text style={styles.cardHeaderText}>{title}</Text>
+    </View>
+    <View style={styles.cardContent}>
+      <View style={styles.equipmentGrid}>
+        <View style={styles.equipmentRow}>
+          <View style={styles.equipmentItem}>
+            <Text style={styles.dataLabel}>Days</Text>
+            <Text style={styles.dataValue}>{data.days}</Text>
+          </View>
+          <View style={styles.equipmentItem}>
+            <Text style={styles.dataLabel}>Monthly Rate</Text>
+            <Text style={styles.dataValue}>{data.monthlyRate}</Text>
+          </View>
+        </View>
+        <View style={styles.equipmentItemRate}>
+          <Text style={styles.dataLabel}>Item Rate</Text>
+          <Text style={[styles.dataValue, styles.itemRateValue]}>{data.itemRate}</Text>
+        </View>
+      </View>
+    </View>
   </View>
 );
 
@@ -244,7 +298,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
   },
   recordDetailContainer: {
-    width: '90%',
+    width: '100%',
     height: '85%',
     backgroundColor: '#FFFFFF',
     borderRadius: Platform.OS === 'ios' ? 50 : 30,
@@ -313,231 +367,257 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Labor Table Styles
-  laborTable: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  
-  laborHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#005BBB',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-  },
-  
-  laborHeaderText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  
-  laborRow: {
-    flexDirection: 'row',
-    alignItems: 'center', // 🔄 Align text vertically
-    paddingVertical: 14,  // 📐 More vertical breathing room
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
-  },
-  
-  laborRowText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1F2937',
-    textAlign: 'center',
-    lineHeight: 20,
+  // Card Container
+  cardsContainer: {
+    gap: 12,
   },
 
-  roleCell: {
-    flex: 1,
-    maxWidth: isSmallScreen ? 80 : 120,
-    textAlign: 'left',
-    paddingRight: 6,
-  },
-  
-  
-  // Optional: specifically for the Role column (to prevent awkward wrapping)
-  laborRoleText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1F2937',
-    textAlign: 'left',
-    lineHeight: 20,
-    paddingRight: 8,
-    maxWidth: 100, // adjust based on layout
-  },
-  
-  
-
-  // Subcontractors Styles
-subcontractorsTable: {
+  // Labor Card Styles
+  laborCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderWidth: 2,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    marginBottom: 16,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
   },
-  subcontractorsHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#007AFF',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+
+  cardHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
-  subcontractorsHeaderText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: 'bold',
+
+  cardHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFFFFF',
-    textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  subcontractorsRow: {
+
+  cardContent: {
+    padding: 16,
+  },
+
+  timeSection: {
     flexDirection: 'row',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  subcontractorsRowText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333333',
-    textAlign: 'center',
+
+  timeRow: {
+    alignItems: 'center',
   },
-  
-  // Daily Activities Styles
-  activitiesContainer: {
+
+  timeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  timeValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+
+  dataGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  dataItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  dataLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  dataValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+
+  totalValue: {
+    color: '#34C759',
+    fontWeight: '700',
+  },
+
+  // Subcontractor Card Styles
+  subcontractorCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    padding: 16,
-    marginBottom: 16,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftColor: '#000',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
   },
+
+  statsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  statNumber: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 4,
+  },
+
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+  },
+
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#E5E5EA',
+    marginHorizontal: 20,
+  },
+
+  // Activities Card Styles
+  activitiesCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#8E8E93',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+
   activitiesText: {
     fontSize: 16,
     lineHeight: 24,
-    color: '#111827',
-  },
-  
-  // Materials Table Styles
-  materialsTable: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    marginBottom: 16,
-  },
-  materialsHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#34C759',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-  },
-  materialsHeaderText: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  materialsRow: {
-    flexDirection: 'row',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  materialsRowText: {
-    flex: 1,
-    fontSize: 14,
+    color: '#1F2937',
     fontWeight: '500',
-    color: '#333333',
-    textAlign: 'center',
   },
-  
-  // Equipment Table Styles
-  equipmentTable: {
+
+  // Material Card Styles
+  materialCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderWidth: 2,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    marginBottom: 16,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
   },
-  equipmentHeader: {
+
+  materialGrid: {
+    gap: 12,
+  },
+
+  materialRow: {
     flexDirection: 'row',
-    backgroundColor: '#FF9500',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  equipmentHeaderText: {
+
+  materialItem: {
+    alignItems: 'center',
     flex: 1,
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
+
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+    textTransform: 'uppercase',
+  },
+
+  materialTotal: {
+    fontSize: 18,
+  },
+
+  // Equipment Card Styles
+  equipmentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 2,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+
+  equipmentGrid: {
+    gap: 12,
+  },
+
   equipmentRow: {
     flexDirection: 'row',
-    alignItems: 'center', // 🔄 Align text vertically
-    paddingVertical: 14,  // 📐 More vertical breathing room
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  equipmentRowText: {
+
+  equipmentItem: {
+    alignItems: 'center',
     flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333333',
-    textAlign: 'center',
-    
   },
-  
+
+  equipmentItemRate: {
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+
+  itemRateValue: {
+    fontSize: 18,
+    color: '#FF9500',
+    fontWeight: '700',
+  },
 });
 
 export default RecordDetailView; 

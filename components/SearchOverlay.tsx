@@ -178,11 +178,42 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
     }
   ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isInputMode, setIsInputMode] = useState(false); // New state for input/recording mode
+  const [isEmailerMode, setIsEmailerMode] = useState(false); // New state for emailer mode toggle
+  const [isRecording, setIsRecording] = useState(false); // New state for recording
   const flatListRef = useRef<FlatList>(null);
 
   // Animated values for input
   const inputScale = useSharedValue(1);
   const sendButtonScale = useSharedValue(1);
+  const recordButtonScale = useSharedValue(1); // New animated value for record button
+
+  // Handle keyboard events
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        // Scroll to bottom when keyboard appears
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener?.remove();
+      keyboardWillHideListener?.remove();
+    };
+  }, []);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -322,6 +353,10 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
 
   const handleInputFocus = () => {
     inputScale.value = withSpring(1.02, { damping: 20, stiffness: 300 });
+    // Scroll to bottom when input is focused
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 200);
   };
 
   const handleInputBlur = () => {
@@ -336,6 +371,41 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
     sendMessage();
   };
 
+  // New toggle functions
+  const toggleInputMode = () => {
+    setIsInputMode(!isInputMode);
+    if (!isInputMode) {
+      // Switching to input mode - stop recording if active
+      if (isRecording) {
+        handleRecordStop();
+      }
+    }
+  };
+
+  const toggleEmailerMode = () => {
+    setIsEmailerMode(!isEmailerMode);
+  };
+
+  const handleRecordStart = () => {
+    setIsRecording(true);
+    recordButtonScale.value = withSpring(1.1, { damping: 15, stiffness: 300 });
+    // Add your recording logic here
+  };
+
+  const handleRecordStop = () => {
+    setIsRecording(false);
+    recordButtonScale.value = withSpring(1, { damping: 15, stiffness: 300 });
+    // Add your recording stop logic here
+  };
+
+  const handleRecordPress = () => {
+    if (isRecording) {
+      handleRecordStop();
+    } else {
+      handleRecordStart();
+    }
+  };
+
   // Animated styles
   const inputStyle = useAnimatedStyle(() => ({
     transform: [{ scale: inputScale.value }],
@@ -343,6 +413,10 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
 
   const sendButtonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: sendButtonScale.value }],
+  }));
+
+  const recordButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: recordButtonScale.value }],
   }));
 
   const overlayStyle = useAnimatedStyle(() => ({
@@ -411,12 +485,14 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
         <KeyboardAvoidingView 
           style={styles.chatContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 120}
         >
           {/* Header */}
           <Animated.View style={[styles.chatHeader, headerStyle]}>
             <View style={styles.headerContent}>
-              
+              {isEmailerMode && (
+                <Text style={styles.emailerModeText}>Emailer Mode</Text>
+              )}
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -431,10 +507,20 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
               data={messages}
               keyExtractor={(item) => item.id}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.messagesList}
+              contentContainerStyle={[
+                styles.messagesList,
+                { paddingBottom: keyboardHeight > 0 ? 20 : 20 }
+              ]}
               renderItem={({ item }) => (
                 <ChatBubble message={item} onRecordClick={onRecordClick} />
               )}
+              onContentSizeChange={() => {
+                if (keyboardHeight > 0) {
+                  setTimeout(() => {
+                    flatListRef.current?.scrollToEnd({ animated: true });
+                  }, 100);
+                }
+              }}
             />
             {isTyping && (
               <View style={[styles.messageContainer, styles.aiMessageContainer]}>
@@ -450,35 +536,89 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
           </Animated.View>
 
           {/* Input Area */}
-          <View style={styles.inputContainer}>
-            <Animated.View style={[styles.inputWrapper, inputStyle]}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Ask me about your recordings..."
-                placeholderTextColor="#8E8E93"
-                value={inputText}
-                onChangeText={setInputText}
-                onFocus={handleInputFocus}
-                onBlur={handleInputBlur}
-                multiline
-                maxLength={500}
-                onSubmitEditing={sendMessage}
-                blurOnSubmit={false}
-              />
-            </Animated.View>
-            <Animated.View style={sendButtonStyle}>
-              <TouchableOpacity
-                onPress={handleSendPress}
-                style={[
-                  styles.sendButton,
-                  inputText.trim() ? styles.sendButtonActive : styles.sendButtonInactive
-                ]}
-                disabled={!inputText.trim()}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.sendButtonText}>➤</Text>
-              </TouchableOpacity>
-            </Animated.View>
+          <View style={[
+            styles.inputContainer,
+            { marginBottom: Platform.OS === 'ios' ? 0 : keyboardHeight > 0 ? 10 : 20 }
+          ]}>
+            {isInputMode ? (
+              // Input mode - show text input and send button
+              <View style={styles.inputModeContainer}>
+                <Animated.View style={[styles.inputWrapper, inputStyle]}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Ask me about your recordings..."
+                    placeholderTextColor="#8E8E93"
+                    value={inputText}
+                    onChangeText={setInputText}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    multiline
+                    maxLength={500}
+                    onSubmitEditing={sendMessage}
+                    blurOnSubmit={false}
+                    returnKeyType="send"
+                  />
+                </Animated.View>
+                <Animated.View style={sendButtonStyle}>
+                  <TouchableOpacity
+                    onPress={handleSendPress}
+                    style={[
+                      styles.sendButton,
+                      inputText.trim() ? styles.sendButtonActive : styles.sendButtonInactive
+                    ]}
+                    disabled={!inputText.trim()}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sendButtonText}>➤</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+            ) : (
+              // Recording mode - show keyboard icon, record button, and email toggle
+              <View style={styles.recordingModeContainer}>
+                {/* Left side - Keyboard toggle button */}
+                <TouchableOpacity
+                  onPress={toggleInputMode}
+                  style={styles.keyboardButton}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.keyboardIcon}>⌨️</Text>
+                </TouchableOpacity>
+
+                {/* Center - Recording button */}
+                <Animated.View style={[styles.recordButtonContainer, recordButtonStyle]}>
+                  <TouchableOpacity
+                    onPress={handleRecordPress}
+                    style={[
+                      styles.recordButton,
+                      isRecording ? styles.recordButtonActive : styles.recordButtonInactive
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[
+                      styles.recordButtonInner,
+                      isRecording ? styles.recordButtonInnerActive : {}
+                    ]} />
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {/* Right side - Email toggle button */}
+                <TouchableOpacity
+                  onPress={toggleEmailerMode}
+                  style={[
+                    styles.emailButton,
+                    isEmailerMode ? styles.emailButtonActive : styles.emailButtonInactive
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.emailIcon,
+                    isEmailerMode ? styles.emailIconActive : styles.emailIconInactive
+                  ]}>✉️</Text>
+                  {isEmailerMode && <View style={styles.emailActiveIndicator} />}
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Animated.View>
@@ -618,7 +758,7 @@ const styles = StyleSheet.create({
   messagesList: {
     paddingHorizontal: 20,
     paddingVertical: 20,
-    paddingBottom: 20,
+    flexGrow: 1,
   },
   messageContainer: {
     marginBottom: 20,
@@ -762,7 +902,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 20,
     paddingBottom: Platform.OS === 'ios' ? 45 : 25,
-    marginBottom: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.08)',
@@ -774,6 +913,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 10,
+  },
+  inputModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    flex: 1,
   },
   inputWrapper: {
     flex: 1,
@@ -831,6 +976,135 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     marginLeft: 2,
+  },
+  emailerModeText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginRight: 10,
+  },
+  keyboardButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  keyboardIcon: {
+    fontSize: 24,
+    color: '#FFFFFF',
+  },
+  recordButtonContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  recordButton: {
+    width: 90,
+    height: 90,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 10,
+    shadowColor: '#FF3B30',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  recordButtonActive: {
+    borderColor: '#FF3B30',
+    backgroundColor: '#FF3B30',
+    shadowColor: '#FF3B30',
+  },
+  recordButtonInactive: {
+    borderColor: '#fff',
+    backgroundColor: 'transparent',
+  },
+  recordButtonInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 50,
+    backgroundColor: '#FF3B30',
+  },
+  recordButtonInnerActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  emailButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  emailButtonActive: {
+    borderColor: '#007AFF',
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+  },
+  emailButtonInactive: {
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  emailIcon: {
+    fontSize: 24,
+    color: '#FFFFFF',
+  },
+  emailIconActive: {
+    color: '#007AFF',
+  },
+  emailIconInactive: {
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  emailActiveIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: '#007AFF',
+    borderRadius: 2,
+  },
+  recordingModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
   },
 });
 
