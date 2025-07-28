@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   recordsContainer: {
-    width: '90%',
+    width: '100%',
     height: '85%',
     backgroundColor: '#FFFFFF',
     borderRadius: Platform.OS === 'ios' ? 50 : 30,

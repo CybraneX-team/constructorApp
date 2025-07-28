@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Dimensions,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -13,6 +14,47 @@ import Animated, {
 } from 'react-native-reanimated';
 import { CircularProgressProps } from './types';
 import { AudioVisualizerBorder } from './AudioVisualizer';
+
+// Get screen dimensions for responsive design
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// Calculate responsive sizes based on screen dimensions
+const getResponsiveSizes = () => {
+  const isSmallDevice = screenWidth < 375 || screenHeight < 667;
+  const isMediumDevice = screenWidth >= 375 && screenWidth < 414;
+  const isLargeDevice = screenWidth >= 414;
+  
+  // Base size calculations
+  let baseSize, mainSize;
+  
+  if (isSmallDevice) {
+    // iPhone SE, small Android phones
+    baseSize = Math.min(screenWidth * 0.65, 240);
+    mainSize = Math.min(screenWidth * 0.75, 280);
+  } else if (isMediumDevice) {
+    // iPhone 12, 13, 14 standard
+    baseSize = Math.min(screenWidth * 0.68, 280);
+    mainSize = Math.min(screenWidth * 0.78, 320);
+  } else {
+    // iPhone 12 Pro Max, large Android phones
+    baseSize = Math.min(screenWidth * 0.7, 320);
+    mainSize = Math.min(screenWidth * 0.8, 360);
+  }
+  
+  return {
+    baseSize,
+    mainSize,
+    centerContentSize: Math.min(baseSize * 0.6, 200),
+    tickMarkRadius: (baseSize - 20) / 2,
+    padding: isSmallDevice ? 30 : 40,
+    fontSize: {
+      title: isSmallDevice ? 14 : 16,
+      button: isSmallDevice ? 12 : 14,
+      duration: isSmallDevice ? 12 : 13,
+      transcription: isSmallDevice ? 12 : 14,
+    }
+  };
+};
 
 const CircularProgress: React.FC<CircularProgressProps> = ({ 
   memo,
@@ -31,7 +73,8 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   handleCircleClick,
   handleSearchPress,
 }) => {
-  const size = isMain ? 320 : 280;
+  const sizes = getResponsiveSizes();
+  const size = isMain ? sizes.mainSize : sizes.baseSize;
   const progress = memo.progress;
   const isFirstCircle = index === 0;
 
@@ -74,7 +117,14 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   });
 
   return (
-    <Animated.View style={[styles.circleContainer, animatedStyle]}>
+    <Animated.View style={[
+      styles.circleContainer, 
+      animatedStyle,
+      { 
+        width: size + sizes.padding, 
+        height: size + sizes.padding 
+      }
+    ]}>
       <TouchableOpacity
         activeOpacity={1.0}
         onPress={() => {
@@ -82,14 +132,14 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
             handleCircleClick(index);
           }
         }}
-        style={styles.touchableCircle}
+        style={[styles.touchableCircle, { width: size + sizes.padding, height: size + sizes.padding }]}
       >
         <View style={[
           styles.circleBackground, 
           { 
-            width: size + 40, 
-            height: size + 40, 
-            borderRadius: (size + 40) / 2,
+            width: size + sizes.padding, 
+            height: size + sizes.padding, 
+            borderRadius: (size + sizes.padding) / 2,
             overflow: 'hidden',
           }
         ]} />
@@ -124,7 +174,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
           }]}>
             {Array.from({ length: 120 }).map((_, tickIndex) => {
               const angle = (tickIndex * 3) * (Math.PI / 180);
-              const radius = (size - 20) / 2;
+              const radius = sizes.tickMarkRadius;
               const x = size / 2 + radius * Math.cos(angle - Math.PI / 2);
               const y = size / 2 + radius * Math.sin(angle - Math.PI / 2);
               
@@ -154,22 +204,26 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
           )}
           
           <View style={[styles.centerContent, {
-            width: Math.min(160, size * 0.8),
-            height: Math.min(160, size * 0.8),
-            borderRadius: Math.min(80, size * 0.25),
+            width: sizes.centerContentSize,
+            height: sizes.centerContentSize,
+            borderRadius: sizes.centerContentSize / 2,
           }]}>
             {isFirstCircle ? (
               // Live transcription for first circle
               <View style={styles.transcriptionContainer}>
-                <Text style={styles.transcriptionLabel}>Live Transcription</Text>
-                <Text style={styles.transcriptionText}>
+                <Text style={[styles.transcriptionLabel, { fontSize: sizes.fontSize.button }]}>
+                  Live Transcription
+                </Text>
+                <Text style={[styles.transcriptionText, { fontSize: sizes.fontSize.transcription }]}>
                   {liveTranscription || 'Start recording to see live transcription...'}
                 </Text>
               </View>
             ) : index === 1 ? (
               // Access Records button for Record Book circle
               <View style={styles.recordsAccessContainer} >
-                <Text style={styles.memoTitle}>{memo.title}</Text>
+                <Text style={[styles.memoTitle, { fontSize: sizes.fontSize.title }]}>
+                  {memo.title}
+                </Text>
                 
                 <Animated.View style={[
                   styles.accessRecordsButtonContainer,
@@ -179,57 +233,46 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
                 ]}>
                   <TouchableOpacity
                     onPress={handleAccessRecords}
-                    style={styles.accessRecordsButton}
+                    style={[styles.accessRecordsButton, {
+                      width: Math.min(sizes.centerContentSize * 0.9, 140),
+                      height: Math.min(sizes.centerContentSize * 0.25, 40),
+                    }]}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.accessRecordsText}>Access Records</Text>
+                    <Text style={[styles.accessRecordsText, { fontSize: sizes.fontSize.button }]}>
+                      Access Records
+                    </Text>
                   </TouchableOpacity>
                 </Animated.View>
                 
-                <Text style={styles.recordsCount}>5 recordings</Text>
+                <Text style={[styles.recordsCount, { fontSize: sizes.fontSize.duration }]}>
+                  5 recordings
+                </Text>
               </View>
-            ) : index === 2 ? (
+            ) : (
               // Search interface for the 3rd circle
               <View style={styles.searchContainer}>
-                <Text style={styles.memoTitle}>{memo.title}</Text>
+                <Text style={[styles.memoTitle, { fontSize: sizes.fontSize.title }]}>
+                  {memo.title}
+                </Text>
                 
                 <TouchableOpacity
                   onPress={() => handleSearchPress?.()}
-                  style={styles.searchButton}
+                  style={[styles.searchButton, {
+                    width: Math.min(sizes.centerContentSize * 0.9, 140),
+                    height: Math.min(sizes.centerContentSize * 0.3, 45),
+                  }]}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.searchButtonText}>Search</Text>
+                  <Text style={[styles.searchButtonText, { fontSize: sizes.fontSize.button }]}>
+                    Search
+                  </Text>
                 </TouchableOpacity>
                 
-                <Text style={styles.searchDescription}>Find recordings by chatting in natural language</Text>
-              </View>
-            ) : (
-              // Regular memo controls for other circles
-              <>
-            <Text style={styles.memoTitle}>{memo.title}</Text>
-            
-            <View style={styles.controlsRow}>
-              <TouchableOpacity style={styles.skipButton}>
-                <Text style={styles.skipText}>10</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                onPress={() => handlePlayPress(memo.id)}
-                style={styles.playButton}
-              >
-                <Text style={styles.playIcon}>
-                  {memo.isPlaying ? '⏸' : '▶'}
+                <Text style={[styles.searchDescription, { fontSize: sizes.fontSize.duration }]}>
+                  Find recordings by chatting in natural language
                 </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.skipButton}>
-                <Text style={styles.skipText}>10</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={styles.duration}>{memo.duration}</Text>
-            <Text style={styles.menuDots}>•••</Text>
-              </>
+              </View>
             )}
           </View>
         </View>
@@ -265,7 +308,6 @@ const styles = StyleSheet.create({
     }),
   },
   touchableCircle: {
-    flex: 1, // Make TouchableOpacity take full size of the circle
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -374,10 +416,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
-    width: 200,
-    height: 200,
     // Make the center content area circular to prevent inner shape artifacts
-    borderRadius: 80,
     // Ensure circular clipping on Android
     ...Platform.select({
       android: {
@@ -387,76 +426,81 @@ const styles = StyleSheet.create({
     }),
   },
   memoTitle: {
-    fontSize: 17,
     fontWeight: '600',
     color: '#000000',
+    marginBottom: 12,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 16,
+    lineHeight: 20,
   },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    width: 140,
-  },
-  playButton: {
-    width: 50,
-    height: 50,
-    backgroundColor: '#000000',
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 20,
-  },
-  playIcon: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginLeft: 2,
+    justifyContent: 'space-between',
+    width: '80%',
+    marginBottom: 8,
   },
   skipButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#F2F2F7',
     alignItems: 'center',
     justifyContent: 'center',
   },
   skipText: {
-    fontSize: 13,
-    color: '#8E8E93',
-    fontWeight: '500',
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  playIcon: {
+    fontSize: 20,
+    color: '#FFFFFF',
   },
   duration: {
-    fontSize: 15,
     color: '#8E8E93',
     fontWeight: '400',
-    marginBottom: 8,
+    marginBottom: 4,
+    textAlign: 'center',
   },
   menuDots: {
     fontSize: 16,
     color: '#8E8E93',
-    letterSpacing: 2,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   transcriptionContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
     height: '100%',
+    paddingHorizontal: 20,
+
   },
   transcriptionLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#8E8E93',
-    marginBottom: 8,
-  },
-  transcriptionText: {
-    fontSize: 16,
     fontWeight: '600',
     color: '#000000',
+    marginBottom: 12,
     textAlign: 'center',
-    lineHeight: 20,
+  },
+  transcriptionText: {
+    color: '#8E8E93',
+    fontWeight: '400',
+    textAlign: 'center',
+    lineHeight: 18,
+    flex: 1,
   },
   recordsAccessContainer: {
     alignItems: 'center',
@@ -465,28 +509,24 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   accessRecordsButtonContainer: {
-    width: 170,
-    height: 60,
-    backgroundColor: '#000',
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   accessRecordsButton: {
-    flexDirection: 'row',
+    backgroundColor: '#000',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   accessRecordsText: {
     color: '#FFFFFF',
-    fontSize: 14,
     fontWeight: '600',
-    marginRight: 8,
   },
   recordsCount: {
-    fontSize: 13,
     color: '#8E8E93',
     fontWeight: '400',
   },
@@ -497,39 +537,28 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   searchButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 170,
-    height: 60,
     backgroundColor: '#000',
-    borderRadius: 16,
-    marginBottom: 16,
-  },
-  searchIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
-  },
-  searchIcon: {
-    fontSize: 24,
-    color: '#000000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   searchButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
     fontWeight: '600',
   },
   searchDescription: {
-    fontSize: 13,
     color: '#8E8E93',
     fontWeight: '400',
     textAlign: 'center',
+    lineHeight: 16,
+    paddingHorizontal: 10,
   },
 });
 
-export default CircularProgress; 
+export default CircularProgress;

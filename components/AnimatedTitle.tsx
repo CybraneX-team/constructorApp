@@ -32,7 +32,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 84,
+    fontSize: 80,
     fontWeight: Platform.OS === 'android' ? '900' : '800',
     textAlign: 'center',
     color: '#000000',

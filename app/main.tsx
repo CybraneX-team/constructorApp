@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
-    Platform,
-    SafeAreaView,
-    StatusBar,
-    StyleSheet,
-    View,
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  View,
 } from 'react-native';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
@@ -21,7 +22,6 @@ import { useVoiceMemos } from '../hooks/useVoiceMemos';
 
 const VoiceMemosScreen = () => {
   const {
-    // State
     isRecording,
     currentIndex,
     liveTranscription,
@@ -33,8 +33,6 @@ const VoiceMemosScreen = () => {
     recordsList,
     isUploading,
     uploadProgress,
-    
-    // Animation values
     recordButtonScale,
     recordButtonOpacity,
     titleTranslateY,
@@ -52,8 +50,6 @@ const VoiceMemosScreen = () => {
     recordDetailBackdropOpacity,
     searchOverlayTranslateY,
     searchOverlayOpacity,
-    
-    // Functions
     getCurrentTitle,
     handleCircleClick,
     panGestureHandler,
@@ -67,26 +63,33 @@ const VoiceMemosScreen = () => {
     handleCloseSearch,
   } = useVoiceMemos();
 
-  // Memoized current title for performance
   const currentTitle = React.useMemo(() => getCurrentTitle(), [getCurrentTitle]);
+
+  useEffect(() => {
+    console.log(Dimensions.get('window'));
+  }, []);
+  
+
+  const { height, width } = Dimensions.get('window');
+  const isIPhone16 = Platform.OS === 'ios' && height === 852 && width === 393;
+
+  const styles = getStyles(isIPhone16); // 👈 dynamic styles
 
   return (
     <GestureHandlerRootView style={styles.container}>
       <View style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
           <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
-          
           <AnimatedTitle
             title={currentTitle}
             titleTranslateY={titleTranslateY}
             titleOpacity={titleOpacity}
           />
-          
           <View style={styles.circlesContainer}>
             <PanGestureHandler onGestureEvent={panGestureHandler}>
               <Animated.View style={styles.gestureContainer}>
                 {memos.map((memo, index) => (
-                  <CircularProgress 
+                  <CircularProgress
                     key={memo.id}
                     memo={memo}
                     index={index}
@@ -115,31 +118,28 @@ const VoiceMemosScreen = () => {
           recordButtonScale={recordButtonScale}
           recordButtonOpacity={recordButtonOpacity}
         />
-        
-        {/* Records List Overlay */}
+
         {showRecordsList && (
-          <RecordsList 
-            records={recordsList} 
-            onClose={handleCloseRecords} 
-            listScale={recordsListScale} 
-            listOpacity={recordsListOpacity} 
-            backdropOpacity={recordsBackdropOpacity} 
-            onRecordClick={handleRecordClick} 
-          />
-        )}
-        
-        {/* Record Detail Overlay */}
-        {showRecordDetail && selectedRecord && (
-          <RecordDetailView 
-            record={selectedRecord} 
-            onClose={handleCloseRecordDetail} 
-            detailScale={recordDetailScale} 
-            detailOpacity={recordDetailOpacity} 
-            backdropOpacity={recordDetailBackdropOpacity} 
+          <RecordsList
+            records={recordsList}
+            onClose={handleCloseRecords}
+            listScale={recordsListScale}
+            listOpacity={recordsListOpacity}
+            backdropOpacity={recordsBackdropOpacity}
+            onRecordClick={handleRecordClick}
           />
         )}
 
-        {/* Search Overlay */}
+        {showRecordDetail && selectedRecord && (
+          <RecordDetailView
+            record={selectedRecord}
+            onClose={handleCloseRecordDetail}
+            detailScale={recordDetailScale}
+            detailOpacity={recordDetailOpacity}
+            backdropOpacity={recordDetailBackdropOpacity}
+          />
+        )}
+
         <SearchOverlay
           isVisible={showSearchOverlay}
           onClose={handleCloseSearch}
@@ -160,26 +160,31 @@ const VoiceMemosScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F2F2F7',
-  },
-  safeArea: {
-    flex: 1,
-  },
-  circlesContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 200,
-    marginTop: Platform.OS === 'android' ? -250 : -200,
-  },
-  gestureContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const getStyles = (isIPhone16: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#F2F2F7',
+    },
+    safeArea: {
+      flex: 1,
+    },
+    circlesContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingBottom: 200,
+      marginTop: isIPhone16
+        ? -150
+        : Platform.OS === 'android'
+        ? -250
+        : -200,
+    },
+    gestureContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
 
 export default VoiceMemosScreen;
