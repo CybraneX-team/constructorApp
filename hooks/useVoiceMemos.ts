@@ -1,16 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
 import { Audio } from 'expo-av';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Dimensions } from 'react-native';
 import {
-  useSharedValue,
+  runOnJS,
   useAnimatedGestureHandler,
+  useSharedValue,
+  withRepeat,
   withSpring,
   withTiming,
-  withRepeat,
-  runOnJS,
 } from 'react-native-reanimated';
 import { Memo, RecordDetail } from '../components/types';
+import { recordingService } from '../services/recordingService';
 import { getDetailedRecord, initialMemos, initialRecordsList } from '../utils/recordsData';
-import { Dimensions } from 'react-native';
 
 const screenHeight = Dimensions.get('window').height;
 
@@ -27,6 +28,8 @@ export const useVoiceMemos = () => {
   const [selectedRecord, setSelectedRecord] = useState<RecordDetail | null>(null);
   const [memos, setMemos] = useState<Memo[]>(initialMemos);
   const [recordsList, setRecordsList] = useState(initialRecordsList);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Animation values
   const recordButtonScale = useSharedValue(1);
@@ -59,7 +62,7 @@ export const useVoiceMemos = () => {
   };
 
   // Function to animate circles to their new positions
-  const animateCirclesToNewPositions = (newIndex: number) => {
+  const animateCirclesToNewPositions = useCallback((newIndex: number) => {
     let newVisualOrder: number[] = [];
     
     if (newIndex === 0) {
@@ -101,7 +104,7 @@ export const useVoiceMemos = () => {
         animateCircle();
       }
     });
-  };
+  }, [memos, circlePositions, circleScales, circleOpacities]);
 
   // Function to change index
   const changeIndex = (newIndex: number) => {
@@ -270,12 +273,38 @@ export const useVoiceMemos = () => {
         );
       } catch (error) {
         console.error('Failed to start recording:', error);
+        Alert.alert('Recording Error', 'Failed to start recording. Please check your permissions.');
       }
     } else {
       try {
         if (recording) {
           await recording.stopAndUnloadAsync();
+          
+          // Start upload process
+          setIsUploading(true);
+          setUploadProgress(0);
+          
+          const uploadResult = await uploadRecording(recording);
+          
+          if (uploadResult.success) {
+            Alert.alert('Success', 'Recording uploaded successfully!');
+            // Add the new recording to the records list
+            const newRecord = {
+              id: uploadResult.recordingId || `rec_${Date.now()}`,
+              title: 'New Recording',
+              duration: memos[0].duration,
+              date: new Date().toLocaleString(),
+              jobNumber: 'CFX 417-151', // This should come from app context/settings
+              type: 'Voice Memo'
+            };
+            setRecordsList(prev => [newRecord, ...prev]);
+          } else {
+            Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload recording');
+          }
+          
           setRecording(null);
+          setIsUploading(false);
+          setUploadProgress(0);
         }
         setIsRecording(false);
         console.log('Recording stopped');
@@ -284,8 +313,50 @@ export const useVoiceMemos = () => {
         recordButtonScale.value = withTiming(1);
       } catch (error) {
         console.error('Failed to stop recording:', error);
+        Alert.alert('Recording Error', 'Failed to stop recording properly.');
+        setIsUploading(false);
+        setUploadProgress(0);
       }
     }
+  };
+
+  // Upload recording function
+  const uploadRecording = async (recordingToUpload: Audio.Recording) => {
+    try {
+      const status = await recordingToUpload.getStatusAsync();
+      const duration = status.durationMillis || 0;
+      
+      // Update the live recording memo with actual duration
+      const formattedDuration = formatDuration(duration);
+      setMemos(prev => prev.map(memo => 
+        memo.id === '1' 
+          ? { ...memo, duration: formattedDuration }
+          : memo
+      ));
+
+      const result = await recordingService.uploadRecordingAsJSON(recordingToUpload, {
+        title: 'Voice Recording',
+        jobNumber: 'CFX 417-151', // This should come from app context/settings
+        type: 'Voice Memo',
+        transcription: liveTranscription || undefined,
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Upload error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Upload failed',
+      };
+    }
+  };
+
+  // Helper function to format duration
+  const formatDuration = (durationMs: number): string => {
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const handlePlayPress = (memoId: string) => {
@@ -330,16 +401,16 @@ export const useVoiceMemos = () => {
         duration: 300,
       });
     });
-  }, [currentIndex]);
+  }, [currentIndex, titleOpacity, titleTranslateY]);
 
   // Initialize circle positions on mount
   useEffect(() => {
     animateCirclesToNewPositions(currentIndex);
-  }, []);
+  }, [animateCirclesToNewPositions, currentIndex]);
 
   // Simulate live transcription when recording
   useEffect(() => {
-    let interval: number;
+    let interval: NodeJS.Timeout;
     if (isRecording) {
       const sampleTranscriptions = [
         'Hello, this is a test...',
@@ -368,16 +439,14 @@ export const useVoiceMemos = () => {
 
   // Enhanced audio visualization with metering
   useEffect(() => {
-    let meteringInterval: number;
+    let meteringInterval: NodeJS.Timeout;
     
     if (isRecording && recording) {
       recording.setProgressUpdateInterval(50);
       
       const updateVisualizer = async () => {
-        const SMOOTHING_FACTOR = 0.6;
         const MIN_AMPLITUDE = 0.3;
         const MAX_AMPLITUDE = 0.8;
-        const PEAK_HOLD_DECAY = 0.05;
       
         try {
           const status = await recording.getStatusAsync();
@@ -425,7 +494,7 @@ export const useVoiceMemos = () => {
         bar.value = withTiming(0.3, { duration: 300 });
       });
     }
-  }, [isRecording, recording]);
+  }, [isRecording, recording, visualizerBars]);
 
   return {
     // State
@@ -440,6 +509,8 @@ export const useVoiceMemos = () => {
     selectedRecord,
     memos,
     recordsList,
+    isUploading,
+    uploadProgress,
     
     // Animation values
     recordButtonScale,
@@ -478,5 +549,7 @@ export const useVoiceMemos = () => {
     handlePlayPress,
     handleSearchPress,
     handleCloseSearch,
+    uploadRecording,
+    formatDuration,
   };
 }; 

@@ -1,22 +1,23 @@
 import React from 'react';
 import {
-  View,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Platform,
+    Platform,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    View,
 } from 'react-native';
+import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
-import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Custom hook and components
-import { useVoiceMemos } from '../hooks/useVoiceMemos';
 import { AnimatedTitle } from '../components/AnimatedTitle';
-import { RecordButton } from '../components/RecordButton';
 import CircularProgress from '../components/CircularProgress';
-import RecordsList from '../components/RecordsList';
+import { RecordButton } from '../components/RecordButton';
 import RecordDetailView from '../components/RecordDetailView';
+import RecordsList from '../components/RecordsList';
 import SearchOverlay from '../components/SearchOverlay';
+import { UploadStatus } from '../components/UploadStatus';
+import { useVoiceMemos } from '../hooks/useVoiceMemos';
 
 const VoiceMemosScreen = () => {
   const {
@@ -30,6 +31,8 @@ const VoiceMemosScreen = () => {
     selectedRecord,
     memos,
     recordsList,
+    isUploading,
+    uploadProgress,
     
     // Animation values
     recordButtonScale,
@@ -65,7 +68,7 @@ const VoiceMemosScreen = () => {
   } = useVoiceMemos();
 
   // Memoized current title for performance
-  const currentTitle = React.useMemo(() => getCurrentTitle(), [currentIndex, memos]);
+  const currentTitle = React.useMemo(() => getCurrentTitle(), [getCurrentTitle]);
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -144,6 +147,13 @@ const VoiceMemosScreen = () => {
           searchOverlayOpacity={searchOverlayOpacity}
           records={recordsList}
           onRecordClick={handleRecordClick}
+        />
+
+        {/* Upload Status */}
+        <UploadStatus
+          isUploading={isUploading}
+          progress={uploadProgress}
+          isVisible={isUploading}
         />
       </View>
     </GestureHandlerRootView>
