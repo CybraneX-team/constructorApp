@@ -532,7 +532,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
         <KeyboardAvoidingView
           style={styles.chatContainer}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 70}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 110}
         >
           <Animated.View style={[styles.chatHeader, headerStyle]}>
             <View style={styles.headerContent}>
@@ -995,9 +995,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(28, 28, 30, 0.9)",
     borderRadius: 25,
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 5,
     marginHorizontal: 10, // Adjusted for mic button
-    maxHeight: 120,
+    maxHeight: 55,
     borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.15)",
     shadowColor: "#000",
@@ -1010,7 +1010,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   textInput: {
-    fontSize: 16,
+    fontSize: 12,
     color: "#FFFFFF",
     minHeight: 22,
     fontWeight: "400",

@@ -2,6 +2,9 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { AudioVisualizer } from './AudioVisualizer';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { useAuth } from '../contexts/AuthContext';
+import { router } from 'expo-router';
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -16,6 +19,8 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   recordButtonScale,
   recordButtonOpacity,
 }) => {
+  const { logout } = useAuth();
+  
   const recordButtonAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ scale: recordButtonScale.value }],
@@ -23,8 +28,22 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
     };
   });
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
     <View style={styles.recordSection}>
+      {/* Logout Button */}
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <MaterialIcons name="logout" size={24} color="#8E8E93" />
+      </TouchableOpacity>
+      
       <View style={styles.topCurvedSection} />
       <View style={styles.leftCurvedSection} />
       <View style={styles.leftCurvedSectionBar} />
@@ -154,4 +173,22 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     textAlign: 'center',
   },
-}); 
+  logoutButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+    // Add subtle shadow
+    // shadowColor: '#000',
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.1,
+    // shadowRadius: 4,
+    // elevation: 3,
+  },
+});

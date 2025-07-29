@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
+import ProtectedRoute from '../components/ProtectedRoute';
 
 // Custom hook and components
 import { AnimatedTitle } from '../components/AnimatedTitle';
@@ -73,90 +74,92 @@ const VoiceMemosScreen = () => {
   const { height, width } = Dimensions.get('window');
   const isIPhone16 = Platform.OS === 'ios' && height === 852 && width === 393;
 
-  const styles = getStyles(isIPhone16); // 👈 dynamic styles
+  const styles = getStyles(isIPhone16);
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <View style={styles.container}>
-        <SafeAreaView style={styles.safeArea}>
-          <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
-          <AnimatedTitle
-            title={currentTitle}
-            titleTranslateY={titleTranslateY}
-            titleOpacity={titleOpacity}
+    <ProtectedRoute>
+      <GestureHandlerRootView style={styles.container}>
+        <View style={styles.container}>
+          <SafeAreaView style={styles.safeArea}>
+            <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
+            <AnimatedTitle
+              title={currentTitle}
+              titleTranslateY={titleTranslateY}
+              titleOpacity={titleOpacity}
+            />
+            <View style={styles.circlesContainer}>
+              <PanGestureHandler onGestureEvent={panGestureHandler}>
+                <Animated.View style={styles.gestureContainer}>
+                  {memos.map((memo, index) => (
+                    <CircularProgress
+                      key={memo.id}
+                      memo={memo}
+                      index={index}
+                      isMain={index === currentIndex}
+                      currentIndex={currentIndex}
+                      circlePositions={circlePositions}
+                      circleScales={circleScales}
+                      circleOpacities={circleOpacities}
+                      visualizerBars={visualizerBars}
+                      isRecording={isRecording}
+                      liveTranscription={liveTranscription}
+                      recordsButtonScale={recordsButtonScale}
+                      handleAccessRecords={handleAccessRecords}
+                      handlePlayPress={handlePlayPress}
+                      handleCircleClick={handleCircleClick}
+                      handleSearchPress={handleSearchPress}
+                    />
+                  ))}
+                </Animated.View>
+              </PanGestureHandler>
+            </View>
+          </SafeAreaView>
+
+          <RecordButton
+            onPress={handleRecordPress}
+            recordButtonScale={recordButtonScale}
+            recordButtonOpacity={recordButtonOpacity}
           />
-          <View style={styles.circlesContainer}>
-            <PanGestureHandler onGestureEvent={panGestureHandler}>
-              <Animated.View style={styles.gestureContainer}>
-                {memos.map((memo, index) => (
-                  <CircularProgress
-                    key={memo.id}
-                    memo={memo}
-                    index={index}
-                    isMain={index === currentIndex}
-                    currentIndex={currentIndex}
-                    circlePositions={circlePositions}
-                    circleScales={circleScales}
-                    circleOpacities={circleOpacities}
-                    visualizerBars={visualizerBars}
-                    isRecording={isRecording}
-                    liveTranscription={liveTranscription}
-                    recordsButtonScale={recordsButtonScale}
-                    handleAccessRecords={handleAccessRecords}
-                    handlePlayPress={handlePlayPress}
-                    handleCircleClick={handleCircleClick}
-                    handleSearchPress={handleSearchPress}
-                  />
-                ))}
-              </Animated.View>
-            </PanGestureHandler>
-          </View>
-        </SafeAreaView>
 
-        <RecordButton
-          onPress={handleRecordPress}
-          recordButtonScale={recordButtonScale}
-          recordButtonOpacity={recordButtonOpacity}
-        />
+          {showRecordsList && (
+            <RecordsList
+              records={recordsList}
+              onClose={handleCloseRecords}
+              listScale={recordsListScale}
+              listOpacity={recordsListOpacity}
+              backdropOpacity={recordsBackdropOpacity}
+              onRecordClick={handleRecordClick}
+            />
+          )}
 
-        {showRecordsList && (
-          <RecordsList
+          {showRecordDetail && selectedRecord && (
+            <RecordDetailView
+              record={selectedRecord}
+              onClose={handleCloseRecordDetail}
+              detailScale={recordDetailScale}
+              detailOpacity={recordDetailOpacity}
+              backdropOpacity={recordDetailBackdropOpacity}
+            />
+          )}
+
+          <SearchOverlay
+            isVisible={showSearchOverlay}
+            onClose={handleCloseSearch}
+            searchOverlayTranslateY={searchOverlayTranslateY}
+            searchOverlayOpacity={searchOverlayOpacity}
             records={recordsList}
-            onClose={handleCloseRecords}
-            listScale={recordsListScale}
-            listOpacity={recordsListOpacity}
-            backdropOpacity={recordsBackdropOpacity}
             onRecordClick={handleRecordClick}
           />
-        )}
 
-        {showRecordDetail && selectedRecord && (
-          <RecordDetailView
-            record={selectedRecord}
-            onClose={handleCloseRecordDetail}
-            detailScale={recordDetailScale}
-            detailOpacity={recordDetailOpacity}
-            backdropOpacity={recordDetailBackdropOpacity}
+          {/* Upload Status */}
+          <UploadStatus
+            isUploading={isUploading}
+            progress={uploadProgress}
+            isVisible={isUploading}
           />
-        )}
-
-        <SearchOverlay
-          isVisible={showSearchOverlay}
-          onClose={handleCloseSearch}
-          searchOverlayTranslateY={searchOverlayTranslateY}
-          searchOverlayOpacity={searchOverlayOpacity}
-          records={recordsList}
-          onRecordClick={handleRecordClick}
-        />
-
-        {/* Upload Status */}
-        <UploadStatus
-          isUploading={isUploading}
-          progress={uploadProgress}
-          isVisible={isUploading}
-        />
-      </View>
-    </GestureHandlerRootView>
+        </View>
+      </GestureHandlerRootView>
+    </ProtectedRoute>
   );
 };
 
