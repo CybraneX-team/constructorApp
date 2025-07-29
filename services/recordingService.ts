@@ -330,7 +330,7 @@ class RecordingService {
     try {
       console.log('🔍 Testing connection to:', this.baseUrl);
       
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -338,13 +338,144 @@ class RecordingService {
       });
       
       console.log('✅ Connection test response:', response.status);
-      return { success: true };
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Health check result:', result);
+        return { success: true };
+      } else {
+        throw new Error(`Health check failed with status: ${response.status}`);
+      }
       
     } catch (error) {
       console.error('❌ Connection test failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Connection test failed',
+      };
+    }
+  }
+
+  /**
+   * Search recordings using backend AI search
+   * @param query - The search query from user
+   * @param token - JWT authentication token
+   * @returns Promise with search results
+   */
+  async searchRecordings(query: string, token: string): Promise<{
+    success: boolean;
+    message?: string;
+    recordings: any[];
+    count: number;
+    error?: string;
+  }> {
+    try {
+      console.log('🔍 Searching recordings with query:', query);
+      console.log('🔑 Using token:', token ? 'Token provided' : 'No token');
+      console.log('🌐 Backend URL:', this.baseUrl);
+      
+      // Encode query parameter for URL
+      const encodedQuery = encodeURIComponent(query);
+      const searchUrl = `${this.baseUrl}/search?query=${encodedQuery}`;
+      console.log('📡 Full search URL:', searchUrl);
+      
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      };
+      console.log('📋 Request headers:', headers);
+      
+      const response = await fetch(searchUrl, {
+        method: 'GET',
+        headers,
+      });
+
+      console.log('📡 Search response status:', response.status);
+      console.log('📡 Search response headers:', response.headers);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Search failed response:', errorText);
+        throw new Error(`Search failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Search successful:', result);
+      
+      return {
+        success: result.success,
+        message: result.message,
+        recordings: result.recordings || [],
+        count: result.count || 0,
+      };
+
+    } catch (error) {
+      console.error('❌ Search request failed:', error);
+      
+      // Enhanced error logging
+      if (error instanceof TypeError && error.message === 'Network request failed') {
+        console.error('🔍 Network debugging info:');
+        console.error('   - Backend URL:', this.baseUrl);
+        console.error('   - Full search URL:', `${this.baseUrl}/search`);
+        console.error('   - Check if backend is running and accessible');
+        console.error('   - Verify network connectivity');
+        console.error('   - For Android: ensure android:usesCleartextTraffic="true" in manifest');
+        console.error('   - For iOS: check App Transport Security settings');
+      }
+      
+      return {
+        success: false,
+        recordings: [],
+        count: 0,
+        error: error instanceof Error ? error.message : 'Search request failed',
+      };
+    }
+  }
+
+  /**
+   * Get all recordings for the authenticated user
+   * @param token - JWT authentication token
+   * @returns Promise with all recordings
+   */
+  async getAllRecordings(token: string): Promise<{
+    success: boolean;
+    recordings: any[];
+    count: number;
+    error?: string;
+  }> {
+    try {
+      console.log('📂 Fetching all recordings');
+      
+      const response = await fetch(`${this.baseUrl}/recordings`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to fetch recordings:', errorText);
+        throw new Error(`Failed to fetch recordings: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Recordings fetched successfully:', result.count, 'recordings');
+      
+      return {
+        success: result.success,
+        recordings: result.recordings || [],
+        count: result.count || 0,
+      };
+
+    } catch (error) {
+      console.error('❌ Failed to fetch recordings:', error);
+      
+      return {
+        success: false,
+        recordings: [],
+        count: 0,
+        error: error instanceof Error ? error.message : 'Failed to fetch recordings',
       };
     }
   }

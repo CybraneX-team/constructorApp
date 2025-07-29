@@ -20,6 +20,8 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+import { useAuth } from '../contexts/AuthContext';
+import { recordingService } from '../services/recordingService';
 
 
 const screenHeight = Dimensions.get("window").height;
@@ -204,10 +206,19 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   records,
   onRecordClick,
 }) => {
+  const { token, refreshToken } = useAuth(); // Get the auth token and refresh function
   const [inputText, setInputText] = useState("");
+  
+  // Global message ID counter to ensure unique IDs
+  const messageIdCounterRef = useRef(Date.now());
+  const generateUniqueId = () => {
+    messageIdCounterRef.current += 1;
+    return messageIdCounterRef.current.toString();
+  };
+  
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: "1",
+      id: "initial_message",
       text: "Hi! I'm your AI assistant. I can help you find recordings, summarize content, or answer questions about your voice memos. What would you like to know?",
       isUser: false,
       timestamp: new Date(),
@@ -255,155 +266,225 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
     }, 100);
   };
 
-  const generateAIResponse = (userMessage: string): Message[] => {
-    const lowerMessage = userMessage.toLowerCase();
+  // Backend search function using the recording service
+  const performBackendSearch = async (query: string): Promise<Message[]> => {
     const responses: Message[] = [];
+    let messageIdCounter = Date.now();
+    
+    const generateUniqueId = () => {
+      messageIdCounter += 1;
+      return messageIdCounter.toString();
+    };
+    
+    if (!token) {
+      responses.push({
+        id: generateUniqueId(),
+        text: "🔐 Please log in to search your recordings.",
+        isUser: false,
+        timestamp: new Date(),
+        type: "text",
+      });
+      return responses;
+    }
 
-    if (
-      lowerMessage.includes("find") ||
-      lowerMessage.includes("search") ||
-      lowerMessage.includes("show")
-    ) {
-      const searchTerms = lowerMessage
-        .split(" ")
-        .filter(
-          (word) =>
-            ![
-              "find",
-              "search",
-              "show",
-              "me",
-              "my",
-              "a",
-              "an",
-              "the",
-              "for",
-            ].includes(word)
-        );
-
-      let foundRecordings = records;
-      if (searchTerms.length > 0) {
-        foundRecordings = records.filter((record) =>
-          searchTerms.some(
-            (term) =>
-              record.title.toLowerCase().includes(term) ||
-              record.type.toLowerCase().includes(term)
-          )
-        );
-      }
-
-      if (foundRecordings.length > 0) {
+    try {
+      console.log('🔍 Performing backend search with query:', query);
+      
+      // First test connectivity
+      console.log('🔗 Testing backend connectivity...');
+      const connectionTest = await recordingService.testConnection();
+      if (!connectionTest.success) {
+        console.error('❌ Connection test failed:', connectionTest.error);
         responses.push({
-          id: Date.now().toString(),
-          text: `I found ${foundRecordings.length} recording${
-            foundRecordings.length > 1 ? "s" : ""
-          } that match your request:`,
+          id: generateUniqueId(),
+          text: `🔌 Unable to connect to server. Please check your internet connection and try again.\n\nError: ${connectionTest.error}`,
           isUser: false,
           timestamp: new Date(),
           type: "text",
         });
-
-        foundRecordings.slice(0, 3).forEach((recording, index) => {
+        return responses;
+      }
+      console.log('✅ Backend connectivity confirmed');
+      
+      let result = await recordingService.searchRecordings(query, token);
+      
+      // If we get a 403 error (token expired), try to refresh the token and retry
+      if (!result.success && result.error && result.error.includes('403')) {
+        console.log('🔄 Token may be expired, attempting refresh...');
+        const newToken = await refreshToken();
+        if (newToken) {
+          console.log('✅ Token refreshed, retrying search...');
+          result = await recordingService.searchRecordings(query, newToken);
+        } else {
+          console.log('❌ Token refresh failed');
           responses.push({
-            id: `${Date.now()}_${index}`,
-            text: "",
+            id: generateUniqueId(),
+            text: "🔐 Your session has expired. Please log in again to search your recordings.",
             isUser: false,
             timestamp: new Date(),
-            type: "recording",
-            recordingData: recording,
+            type: "text",
           });
-        });
-
-        if (foundRecordings.length > 3) {
+          return responses;
+        }
+      }
+      
+      if (result.success) {
+        // Add AI message if provided
+        if (result.message) {
           responses.push({
-            id: `${Date.now()}_more`,
-            text: `And ${
-              foundRecordings.length - 3
-            } more recordings. Would you like me to show them all?`,
+            id: generateUniqueId(),
+            text: result.message,
+            isUser: false,
+            timestamp: new Date(),
+            type: "text",
+          });
+        }
+        
+        // Add recording results
+        if (result.recordings && result.recordings.length > 0) {
+          if (!result.message) {
+            // Add a default message if no AI message was provided
+            responses.push({
+              id: generateUniqueId(),
+              text: `📂 Found ${result.count} recording${result.count > 1 ? 's' : ''} matching your search:`,
+              isUser: false,
+              timestamp: new Date(),
+              type: "text",
+            });
+          }
+          
+          // Show up to 5 recordings
+          result.recordings.slice(0, 5).forEach((recording, index) => {
+            responses.push({
+              id: generateUniqueId(),
+              text: "",
+              isUser: false,
+              timestamp: new Date(),
+              type: "recording",
+              recordingData: recording,
+            });
+          });
+          
+          // Show "more results" message if there are additional recordings
+          if (result.recordings.length > 5) {
+            responses.push({
+              id: generateUniqueId(),
+              text: `📋 And ${result.recordings.length - 5} more recordings. Try a more specific search to narrow down results.`,
+              isUser: false,
+              timestamp: new Date(),
+              type: "text",
+            });
+          }
+        } else if (!result.message) {
+          // No recordings found and no AI message
+          responses.push({
+            id: generateUniqueId(),
+            text: "🔍 No recordings found matching your search. Try using different keywords or ask me to show all recordings.",
             isUser: false,
             timestamp: new Date(),
             type: "text",
           });
         }
       } else {
+        // Backend search failed
         responses.push({
-          id: Date.now().toString(),
-          text: "I couldn't find any recordings matching your request. Try using different keywords or ask me to show all recordings.",
+          id: generateUniqueId(),
+          text: `❌ Search failed: ${result.error || 'Unable to search recordings'}. Please try again.`,
           isUser: false,
           timestamp: new Date(),
           type: "text",
         });
       }
-    } else if (
+    } catch (error) {
+      console.error('🔴 Search error:', error);
+      responses.push({
+        id: generateUniqueId(),
+        text: "🔴 Sorry, I couldn't process your search right now. Please check your connection and try again.",
+        isUser: false,
+        timestamp: new Date(),
+        type: "text",
+      });
+    }
+    
+    return responses;
+  };
+
+  // Fallback local search function (for basic queries)
+  const performLocalSearch = (userMessage: string): Message[] => {
+    const lowerMessage = userMessage.toLowerCase();
+    const responses: Message[] = [];
+
+    if (
       lowerMessage.includes("hello") ||
       lowerMessage.includes("hi") ||
       lowerMessage.includes("help")
     ) {
       responses.push({
-        id: Date.now().toString(),
-        text: "Hello! Here are some things I can help you with:\n\n• Find specific recordings\n• Show recent recordings\n• Search by type (meetings, ideas, etc.)\n• Summarize content\n\nWhat would you like to explore?",
+        id: generateUniqueId(),
+        text: "👋 Hello! I can help you search your voice recordings using AI. Try asking me:\n\n• 'Find recordings about safety'\n• 'Show my meeting notes'\n• 'Search for project updates'\n• 'What did I record yesterday?'\n\nWhat would you like to find?",
         isUser: false,
         timestamp: new Date(),
         type: "text",
       });
     } else if (
       lowerMessage.includes("all") ||
-      lowerMessage.includes("everything")
+      lowerMessage.includes("everything") ||
+      lowerMessage.includes("show all")
     ) {
-      responses.push({
-        id: Date.now().toString(),
-        text: `Here are all your recordings (${records.length} total):`,
-        isUser: false,
-        timestamp: new Date(),
-        type: "text",
-      });
-
-      records.slice(0, 5).forEach((recording, index) => {
-        responses.push({
-          id: `${Date.now()}_all_${index}`,
-          text: "",
-          isUser: false,
-          timestamp: new Date(),
-          type: "recording",
-          recordingData: recording,
-        });
-      });
-    } else {
-      responses.push({
-        id: Date.now().toString(),
-        text: "I'm here to help you with your voice recordings. You can ask me to:\n\n• 'Find my meeting recordings'\n• 'Show recent ideas'\n• 'Search for work summaries'\n• 'Show all recordings'\n\nWhat would you like to find?",
-        isUser: false,
-        timestamp: new Date(),
-        type: "text",
-      });
+      // For "show all" requests, we'll use backend search with a generic query
+      return [];
     }
-
+    
     return responses;
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (inputText.trim() === "") return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: generateUniqueId(),
       text: inputText.trim(),
       isUser: true,
       timestamp: new Date(),
       type: "text",
     };
 
+    const query = inputText.trim();
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
     setIsTyping(true);
-
-    setTimeout(() => {
-      const aiResponses = generateAIResponse(inputText.trim());
-      setMessages((prev) => [...prev, ...aiResponses]);
-      setIsTyping(false);
-      scrollToBottom();
-    }, 1000 + Math.random() * 1000);
-
     scrollToBottom();
+
+    try {
+      // First try local responses for simple greetings
+      const localResponses = performLocalSearch(query);
+      
+      if (localResponses.length > 0) {
+        // Handle local responses (like greetings)
+        setTimeout(() => {
+          setMessages((prev) => [...prev, ...localResponses]);
+          setIsTyping(false);
+          scrollToBottom();
+        }, 800);
+      } else {
+        // Use backend search for actual search queries
+        const backendResponses = await performBackendSearch(query);
+        setMessages((prev) => [...prev, ...backendResponses]);
+        setIsTyping(false);
+        scrollToBottom();
+      }
+    } catch (error) {
+      console.error('Message processing error:', error);
+      const errorResponse: Message = {
+        id: generateUniqueId(),
+        text: "🔴 Sorry, something went wrong. Please try again.",
+        isUser: false,
+        timestamp: new Date(),
+        type: "text",
+      };
+      setMessages((prev) => [...prev, errorResponse]);
+      setIsTyping(false);
+    }
   };
 
   const handleInputFocus = () => {
