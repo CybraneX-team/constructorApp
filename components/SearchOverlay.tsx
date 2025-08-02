@@ -1075,7 +1075,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(28, 28, 30, 0.9)",
     borderRadius: 25,
-    paddingHorizontal: 20,
+    paddingHorizontal: Platform.OS === 'ios' ? 20 : 10,
     paddingVertical: 5,
     marginHorizontal: 10, // Adjusted for mic button
     maxHeight: 55,
@@ -1091,11 +1091,11 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   textInput: {
-    fontSize: 12,
+    fontSize: Platform.OS === 'ios' ? 14 : 12,
     color: "#FFFFFF",
     minHeight: 22,
     fontWeight: "400",
-    lineHeight: 22,
+    lineHeight: Platform.OS === 'ios' ? 30 : 22,
   },
   sendButton: {
     width: 52,

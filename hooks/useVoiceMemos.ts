@@ -12,10 +12,14 @@ import {
 import { Memo, RecordDetail } from '../components/types';
 import { recordingService } from '../services/recordingService';
 import { getDetailedRecord, initialMemos, initialRecordsList } from '../utils/recordsData';
+import { useAuth } from '../contexts/AuthContext';
 
 const screenHeight = Dimensions.get('window').height;
 
 export const useVoiceMemos = () => {
+  // Get authentication context
+  const { token } = useAuth();
+  
   // State
   const [isRecording, setIsRecording] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -54,10 +58,13 @@ export const useVoiceMemos = () => {
   const searchOverlayTranslateY = useSharedValue(screenHeight);
   const searchOverlayOpacity = useSharedValue(0);
 
-  // Get current title based on active circle
+  // Get current title based on active circle and recording state
   const getCurrentTitle = () => {
     const currentMemo = memos[currentIndex];
-    if (currentIndex === 0) return 'CAPTURE\nNOW';
+    if (currentIndex === 0) {
+      // For the first circle, show different text based on recording state
+      return isRecording ? 'CAPTURE\nNOW' : 'WORK\nPROGRESS';
+    }
     return currentMemo.title.toUpperCase().replace('\\n', ' ');
   };
 
@@ -339,7 +346,7 @@ export const useVoiceMemos = () => {
         jobNumber: 'CFX 417-151', // This should come from app context/settings
         type: 'Voice Memo',
         transcription: liveTranscription || undefined,
-      });
+      }, token || undefined);
 
       return result;
     } catch (error) {
@@ -384,7 +391,7 @@ export const useVoiceMemos = () => {
     requestPermissions();
   }, []);
 
-  // Animate title change when currentIndex changes
+  // Animate title change when currentIndex or recording state changes
   useEffect(() => {
     titleOpacity.value = withTiming(0, {
       duration: 150,
@@ -401,7 +408,7 @@ export const useVoiceMemos = () => {
         duration: 300,
       });
     });
-  }, [currentIndex, titleOpacity, titleTranslateY]);
+  }, [currentIndex, isRecording, titleOpacity, titleTranslateY]);
 
   // Initialize circle positions on mount
   useEffect(() => {

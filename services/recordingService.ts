@@ -49,7 +49,8 @@ class RecordingService {
       jobNumber: string;
       type: string;
       transcription?: string;
-    }
+    },
+    token?: string
   ): Promise<UploadResponse> {
     try {
       // Get recording status and URI
@@ -86,7 +87,7 @@ class RecordingService {
       };
 
       // Upload to backend
-      const response = await this.performUpload(uploadData);
+      const response = await this.performUpload(uploadData, token);
       return response;
 
     } catch (error) {
@@ -163,7 +164,7 @@ class RecordingService {
   /**
    * Performs the actual HTTP upload to the backend
    */
-  private async performUpload(data: RecordingUploadData): Promise<UploadResponse> {
+  private async performUpload(data: RecordingUploadData, token?: string): Promise<UploadResponse> {
     const formData = new FormData();
     
     // Append all the data fields
@@ -190,11 +191,18 @@ class RecordingService {
       name: `recording_${data.id}.m4a`,
     } as any);
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'multipart/form-data',
+    };
+    
+    // Add authorization header if token is provided
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${this.baseUrl}/recordings/save`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      headers,
       body: formData,
     });
 
@@ -221,7 +229,8 @@ class RecordingService {
       jobNumber: string;
       type: string;
       transcription?: string;
-    }
+    },
+    token?: string
   ): Promise<UploadResponse> {
     try {
       console.log('🚀 Starting upload to:', this.baseUrl);
@@ -259,12 +268,22 @@ class RecordingService {
         url: `${this.baseUrl}/recordings/save`
       });
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      
+      // Add authorization header if token is provided
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('🔑 Including authorization token in request');
+      } else {
+        console.warn('⚠️ No authentication token provided for upload');
+      }
+
       const response = await fetch(`${this.baseUrl}/recordings/save`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers,
         body: JSON.stringify(uploadData),
       });
 
