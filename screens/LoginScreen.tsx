@@ -113,7 +113,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <LinearGradient
-                colors={[Colors.light.new, Colors.light.new + '80']}
+                colors={[Platform.OS === 'ios' ? '#000' : Colors.light.new, Platform.OS === 'ios' ? '#000' : Colors.light.new + 'CC']}
                 style={styles.logoGradient}
               >
                 <Ionicons name="shield-checkmark" size={50} color="white" />
@@ -233,7 +233,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               activeOpacity={0.9}
             >
               <LinearGradient
-                colors={[Colors.light.new, Colors.light.new + 'CC']}
+                colors={[Platform.OS === 'ios' ? '#000' : Colors.light.new, Platform.OS === 'ios' ? '#000' : Colors.light.new + 'CC']}
                 style={styles.buttonGradient}
               >
                 {isLoading ? (
