@@ -392,20 +392,20 @@ class RecordingService {
       console.log('🔑 Using token:', token ? 'Token provided' : 'No token');
       console.log('🌐 Backend URL:', this.baseUrl);
       
-      // Encode query parameter for URL
-      const encodedQuery = encodeURIComponent(query);
-      const searchUrl = `${this.baseUrl}/search?query=${encodedQuery}`;
-      console.log('📡 Full search URL:', searchUrl);
+      const searchUrl = `${this.baseUrl}/search`;
+      console.log('📡 Search URL:', searchUrl);
       
       const headers = {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
       };
       console.log('📋 Request headers:', headers);
       
       const response = await fetch(searchUrl, {
-        method: 'GET',
+        method: 'POST',
         headers,
+        body: JSON.stringify({ query }),
       });
 
       console.log('📡 Search response status:', response.status);
