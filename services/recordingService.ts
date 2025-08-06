@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { AudioRecorder } from 'expo-audio';
 import { config } from '../config/app.config';
 
 export interface RecordingUploadData {
@@ -38,12 +38,12 @@ class RecordingService {
 
   /**
    * Uploads a recording to the backend
-   * @param recording - The Audio.Recording object from expo-av
+   * @param recording - The AudioRecorder object from expo-audio
    * @param metadata - Additional metadata about the recording
    * @returns Promise<UploadResponse>
    */
   async uploadRecording(
-    recording: Audio.Recording,
+    recording: AudioRecorder,
     metadata: {
       title: string;
       jobNumber: string;
@@ -53,9 +53,10 @@ class RecordingService {
     token?: string
   ): Promise<UploadResponse> {
     try {
-      // Get recording status and URI
-      const status = await recording.getStatusAsync();
-      const uri = recording.getURI();
+      // Get recording status and URI  
+      const status = recording.getStatus();
+      const uri = recording.uri;
+      const duration = status.durationMillis;
 
       if (!uri) {
         throw new Error('Recording URI is null');
@@ -71,7 +72,7 @@ class RecordingService {
       const uploadData: RecordingUploadData = {
         id: this.generateId(),
         title: metadata.title,
-        duration: this.formatDuration(status.durationMillis || 0),
+        duration: this.formatDuration(duration || 0),
         date: new Date().toISOString(),
         jobNumber: metadata.jobNumber,
         type: metadata.type,
@@ -145,7 +146,7 @@ class RecordingService {
         mimeType: contentType || 'audio/m4a',
         // Note: Detailed audio metadata (sample rate, channels, bitrate) 
         // would require additional audio processing libraries
-        // For now, we'll use default values based on expo-av settings
+        // For now, we'll use default values based on expo-audio settings
         sampleRate: 44100,
         channels: 2,
         bitRate: 128000,
@@ -223,7 +224,7 @@ class RecordingService {
    * Alternative upload method using JSON payload with base64 audio
    */
   async uploadRecordingAsJSON(
-    recording: Audio.Recording,
+    recording: AudioRecorder,
     metadata: {
       title: string;
       jobNumber: string;
@@ -235,15 +236,16 @@ class RecordingService {
     try {
       console.log('🚀 Starting upload to:', this.baseUrl);
       
-      const status = await recording.getStatusAsync();
-      const uri = recording.getURI();
+      const status = recording.getStatus();
+      const uri = recording.uri;
+      const duration = status.durationMillis;
 
       if (!uri) {
         throw new Error('Recording URI is null');
       }
 
       console.log('📁 Recording URI:', uri);
-      console.log('⏱️ Recording duration:', status.durationMillis);
+      console.log('⏱️ Recording duration:', duration);
 
       const audioInfo = await this.getAudioFileInfo(uri);
       const base64Audio = await this.prepareAudioData(uri);
@@ -251,7 +253,7 @@ class RecordingService {
       const uploadData: RecordingUploadData = {
         id: this.generateId(),
         title: metadata.title,
-        duration: this.formatDuration(status.durationMillis || 0),
+        duration: this.formatDuration(duration || 0),
         date: new Date().toISOString(),
         jobNumber: metadata.jobNumber,
         type: metadata.type,
@@ -495,6 +497,103 @@ class RecordingService {
         recordings: [],
         count: 0,
         error: error instanceof Error ? error.message : 'Failed to fetch recordings',
+      };
+    }
+  }
+
+  /**
+   * Upload recording using URI (for expo-audio)
+   */
+  async uploadRecordingWithUri(
+    recordingUri: string,
+    metadata: {
+      title: string;
+      jobNumber: string;
+      type: string;
+      transcription?: string;
+    },
+    token?: string
+  ): Promise<UploadResponse> {
+    try {
+      console.log('🚀 Starting upload to:', this.baseUrl);
+      console.log('📁 Recording URI:', recordingUri);
+
+      const audioInfo = await this.getAudioFileInfo(recordingUri);
+      const base64Audio = await this.prepareAudioData(recordingUri);
+
+      const uploadData: RecordingUploadData = {
+        id: this.generateId(),
+        title: metadata.title,
+        duration: '00:00', // We'll update this with actual duration if available
+        date: new Date().toISOString(),
+        jobNumber: metadata.jobNumber,
+        type: metadata.type,
+        audioFile: base64Audio,
+        transcription: metadata.transcription,
+        metadata: audioInfo,
+      };
+
+      console.log('📤 Upload data prepared:', {
+        id: uploadData.id,
+        title: uploadData.title,
+        duration: uploadData.duration,
+        audioFileSize: base64Audio.length,
+        url: `${this.baseUrl}/recordings/save`
+      });
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      
+      // Add authorization header if token is provided
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('🔑 Including authorization token in request');
+      } else {
+        console.warn('⚠️ No authentication token provided for upload');
+      }
+
+      const response = await fetch(`${this.baseUrl}/recordings/save`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(uploadData),
+      });
+
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', response.headers);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Upload failed response:', errorText);
+        throw new Error(`Upload failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Upload successful:', result);
+      
+      return {
+        success: true,
+        recordingId: result.id || uploadData.id,
+        message: result.message || 'Recording uploaded successfully',
+      };
+
+    } catch (error) {
+      console.error('❌ URI Upload failed:', error);
+      
+      // More detailed error logging
+      if (error instanceof TypeError && error.message === 'Network request failed') {
+        console.error('🔍 Network debugging info:');
+        console.error('   - Backend URL:', this.baseUrl);
+        console.error('   - Check if backend is running');
+        console.error('   - Check if device can reach backend IP');
+        console.error('   - For Android: ensure android:usesCleartextTraffic="true" in manifest');
+        console.error('   - For iOS: check App Transport Security settings');
+      }
+      
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown upload error',
       };
     }
   }

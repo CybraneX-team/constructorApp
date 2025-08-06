@@ -72,6 +72,8 @@ export const UploadStatus: React.FC<UploadStatusProps> = ({
               fontSize: 14,
               fontWeight: '600',
               marginBottom: 4,
+              zIndex: 100,
+
             }}
           >
             {isUploading ? 'Uploading recording...' : 'Upload complete!'}
@@ -84,6 +86,7 @@ export const UploadStatus: React.FC<UploadStatusProps> = ({
                 backgroundColor: 'rgba(255, 255, 255, 0.2)',
                 borderRadius: 2,
                 overflow: 'hidden',
+                zIndex: 100,
               }}
             >
               <Animated.View

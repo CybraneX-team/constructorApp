@@ -65,7 +65,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       } else {
         await login(email, password, undefined);
       }
-      router.replace('/main');
+      router.replace('/site-selection');
     } catch (error: any) {
       Alert.alert('Login Failed', error.message);
     } finally {

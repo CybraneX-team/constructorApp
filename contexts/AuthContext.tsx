@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/apiConfig';
+// We'll use this to access site context from inside auth context
+// import { useSite } from './SiteContext';
 
 interface User {
   email: string;

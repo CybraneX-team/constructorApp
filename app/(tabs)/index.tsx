@@ -9,8 +9,8 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!isLoading) {
       if (user) {
-        // User is authenticated, redirect to main screen
-        router.replace('/main');
+        // User is authenticated, redirect to site selection screen
+        router.replace('/site-selection');
       } else {
         // User is not authenticated, redirect to login
         router.replace('/login');

@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { AudioRecorder, setAudioModeAsync, useAudioRecorder, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Dimensions } from 'react-native';
 import {
@@ -20,11 +20,32 @@ export const useVoiceMemos = () => {
   // Get authentication context
   const { token } = useAuth();
   
+  // Initialize audio recorder at the top level (following Rules of Hooks)
+  const audioRecorder = useAudioRecorder({
+    extension: '.m4a',
+    sampleRate: 44100,
+    numberOfChannels: 2,
+    bitRate: 128000,
+    android: {
+      extension: '.m4a',
+      outputFormat: 'mpeg4',
+      audioEncoder: 'aac',
+    },
+    ios: {
+      extension: '.m4a',
+      outputFormat: 'mpeg4aac',
+      audioQuality: 96,
+    },
+    web: {
+      mimeType: 'audio/webm;codecs=opus',
+      bitsPerSecond: 128000,
+    },
+  });
+  
   // State
   const [isRecording, setIsRecording] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [liveTranscription, setLiveTranscription] = useState('');
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0));
   const [showRecordsList, setShowRecordsList] = useState(false);
   const [showRecordDetail, setShowRecordDetail] = useState(false);
@@ -255,16 +276,14 @@ export const useVoiceMemos = () => {
   const handleRecordPress = async () => {
     if (!isRecording) {
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
         });
 
-        const { recording: newRecording } = await Audio.Recording.createAsync({
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-          isMeteringEnabled: true,
-        });
-        setRecording(newRecording);
+        // Use the audioRecorder from the top level
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
         setIsRecording(true);
         console.log('Recording started');
 
@@ -284,14 +303,20 @@ export const useVoiceMemos = () => {
       }
     } else {
       try {
-        if (recording) {
-          await recording.stopAndUnloadAsync();
-          
+        await audioRecorder.stop();
+        const uri = audioRecorder.uri;
+        const status = audioRecorder.getStatus();
+        
+        console.log('Recording stopped');
+        console.log('Recording status:', status);
+        console.log('Recording URI:', uri);
+        
+        if (uri) {
           // Start upload process
           setIsUploading(true);
           setUploadProgress(0);
           
-          const uploadResult = await uploadRecording(recording);
+          const uploadResult = await uploadRecording(audioRecorder);
           
           if (uploadResult.success) {
             Alert.alert('Success', 'Recording uploaded successfully!');
@@ -299,7 +324,7 @@ export const useVoiceMemos = () => {
             const newRecord = {
               id: uploadResult.recordingId || `rec_${Date.now()}`,
               title: 'New Recording',
-              duration: memos[0].duration,
+              duration: formatDuration(status.durationMillis || 0),
               date: new Date().toLocaleString(),
               jobNumber: 'CFX 417-151', // This should come from app context/settings
               type: 'Voice Memo'
@@ -309,18 +334,21 @@ export const useVoiceMemos = () => {
             Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload recording');
           }
           
-          setRecording(null);
           setIsUploading(false);
           setUploadProgress(0);
+        } else {
+          console.log('No recording URI available');
+          Alert.alert('Recording Error', 'No recording was saved. Please try again.');
         }
+        
         setIsRecording(false);
-        console.log('Recording stopped');
 
         recordButtonOpacity.value = withTiming(1);
         recordButtonScale.value = withTiming(1);
       } catch (error) {
         console.error('Failed to stop recording:', error);
         Alert.alert('Recording Error', 'Failed to stop recording properly.');
+        setIsRecording(false);
         setIsUploading(false);
         setUploadProgress(0);
       }
@@ -328,9 +356,9 @@ export const useVoiceMemos = () => {
   };
 
   // Upload recording function
-  const uploadRecording = async (recordingToUpload: Audio.Recording) => {
+  const uploadRecording = async (recordingToUpload: AudioRecorder) => {
     try {
-      const status = await recordingToUpload.getStatusAsync();
+      const status = recordingToUpload.getStatus();
       const duration = status.durationMillis || 0;
       
       // Update the live recording memo with actual duration
@@ -380,9 +408,11 @@ export const useVoiceMemos = () => {
   useEffect(() => {
     async function requestPermissions() {
       try {
-        const permission = await Audio.requestPermissionsAsync();
+        const permission = await requestRecordingPermissionsAsync();
         if (!permission.granted) {
           console.log('Permission to access audio was denied');
+        } else {
+          console.log('Audio recording permission granted');
         }
       } catch (error) {
         console.error('Failed to request audio permissions:', error);
@@ -417,7 +447,7 @@ export const useVoiceMemos = () => {
 
   // Simulate live transcription when recording
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isRecording) {
       const sampleTranscriptions = [
         'Hello, this is a test...',
@@ -444,51 +474,30 @@ export const useVoiceMemos = () => {
     };
   }, [isRecording]);
 
-  // Enhanced audio visualization with metering
+  // Enhanced audio visualization (simplified for expo-audio)
   useEffect(() => {
-    let meteringInterval: NodeJS.Timeout;
+    let meteringInterval: ReturnType<typeof setInterval>;
     
-    if (isRecording && recording) {
-      recording.setProgressUpdateInterval(50);
-      
-      const updateVisualizer = async () => {
+    if (isRecording) {
+      const updateVisualizer = () => {
         const MIN_AMPLITUDE = 0.3;
         const MAX_AMPLITUDE = 0.8;
+        const now = Date.now();
       
-        try {
-          const status = await recording.getStatusAsync();
+        visualizerBars.forEach((bar, index) => {
+          const waveOffset = Math.sin((now * 0.008) + (index * 0.35)) * 0.25;
+          const randomVariation = (Math.random() - 0.5) * 0.3;
       
-          if (status.isRecording && status.metering !== undefined) {
-            const dbLevel = Math.max(-60, Math.min(0, status.metering));
-            const amplitude = Math.pow(10, dbLevel / 20) * 2;
+          const frequencyProfile = Math.sin((index / visualizerBars.length) * Math.PI) * 0.8 + 0.2;
       
-            const now = Date.now();
+          // Simulate audio levels since expo-audio doesn't provide metering yet
+          const baseAmplitude = 0.6 + Math.sin(now * 0.003) * 0.2;
+          let target = baseAmplitude * frequencyProfile + waveOffset + randomVariation;
       
-            visualizerBars.forEach((bar, index) => {
-              const waveOffset = Math.sin((now * 0.008) + (index * 0.35)) * 0.25;
-              const randomVariation = (Math.random() - 0.5) * 0.3;
-      
-              const frequencyProfile = Math.sin((index / visualizerBars.length) * Math.PI) * 0.8 + 0.2;
-      
-              let target = amplitude * frequencyProfile + waveOffset + randomVariation;
-      
-              target = Math.max(MIN_AMPLITUDE, Math.min(MAX_AMPLITUDE, target));
-              
-              bar.value = withTiming(target, { duration: 80 });
-            });
-          }
-        } catch (error) {
-          console.log('Error getting audio status:', error);
-      
-          const now = Date.now();
-      
-          visualizerBars.forEach((bar, index) => {
-            const wave = Math.sin((now * 0.004) + index * 0.25) * 0.5 + 0.5;
-            const flutter = (Math.sin(now * 0.01 + index) * 0.2 + 0.2) * Math.random();
-            const target = Math.max(MIN_AMPLITUDE, Math.min(MAX_AMPLITUDE, wave + flutter));
-            bar.value = withTiming(target, { duration: 100 });
-          });
-        }
+          target = Math.max(MIN_AMPLITUDE, Math.min(MAX_AMPLITUDE, target));
+          
+          bar.value = withTiming(target, { duration: 80 });
+        });
       };
 
       meteringInterval = setInterval(updateVisualizer, 50);
@@ -501,14 +510,14 @@ export const useVoiceMemos = () => {
         bar.value = withTiming(0.3, { duration: 300 });
       });
     }
-  }, [isRecording, recording, visualizerBars]);
+  }, [isRecording, visualizerBars]);
 
   return {
     // State
     isRecording,
     currentIndex,
     liveTranscription,
-    recording,
+    recorder: audioRecorder, // Use audioRecorder instead of the old recorder state
     audioLevels,
     showRecordsList,
     showRecordDetail,
