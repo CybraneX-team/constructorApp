@@ -1,4 +1,4 @@
-package com.saiyam12.voiceai
+package com.cybranex.voiceai
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

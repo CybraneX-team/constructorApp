@@ -12,12 +12,18 @@ interface RecordButtonProps {
   onPress: () => void;
   recordButtonScale: Animated.SharedValue<number>;
   recordButtonOpacity: Animated.SharedValue<number>;
+  onSearchPress?: () => void;
+  onMoveToSearchCircle?: () => void;
+  onCameraPress?: () => void;
 }
 
 export const RecordButton: React.FC<RecordButtonProps> = ({
   onPress,
   recordButtonScale,
   recordButtonOpacity,
+  onSearchPress,
+  onMoveToSearchCircle,
+  onCameraPress,
 }) => {
   const { logout } = useAuth();
   
@@ -37,6 +43,12 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
     }
   };
 
+  const handleSearch = () => {
+    // Move to the Search circle, then open search overlay/modal
+    onMoveToSearchCircle?.();
+    onSearchPress?.();
+  };
+
   return (
     <View style={styles.recordSection}>
       {/* Logout Button */}
@@ -51,6 +63,7 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
       <View style={styles.rightCurvedSectionBar} />
       <View style={styles.bottomRectSection} />
       
+      {/* Original Record Button Position */}
       <View style={styles.recordButtonWrapper}>
         <AudioVisualizer />
         <AnimatedTouchableOpacity
@@ -62,6 +75,27 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
         >
           <View style={styles.recordButtonInner} />
         </AnimatedTouchableOpacity>
+      </View>
+
+      {/* Bottom bar action buttons - positioned to not interfere with record button */}
+      <View style={styles.bottomActions}>
+        <TouchableOpacity
+          onPress={handleSearch}
+          style={[styles.actionButton, styles.actionButtonLeft]}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="search" size={25} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        <View style={styles.spacer} />
+
+        <TouchableOpacity
+          onPress={onCameraPress}
+          style={[styles.actionButton, styles.actionButtonRight]}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="photo-camera" size={25} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
       
       <View style={styles.instructionWrapper}>
@@ -184,11 +218,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 200,
-    // Add subtle shadow
-    // shadowColor: '#000',
-    // shadowOffset: { width: 0, height: 2 },
-    // shadowOpacity: 0.1,
-    // shadowRadius: 4,
-    // elevation: 3,
+  },
+  bottomActions: {
+    position: 'absolute',
+    bottom: 35,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 40,
+  },
+  spacer: {
+    width: 70, // Space for the record button
+  },
+  actionButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  actionButtonLeft: {
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  actionButtonRight: {
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
   },
 });
