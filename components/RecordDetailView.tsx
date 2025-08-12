@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,15 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
 import { RecordDetailViewProps } from './types';
+import { generatePDFFromRecord } from '../utils/pdfGenerator';
 
 const screenWidth = Dimensions.get('window').width;
 const isSmallScreen = screenWidth < 360;
@@ -235,6 +238,8 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   detailOpacity, 
   backdropOpacity 
 }) => {
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
   }));
@@ -243,6 +248,23 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
     transform: [{ scale: detailScale.value }],
     opacity: detailOpacity.value,
   }));
+
+  const handleDownloadPDF = async () => {
+    try {
+      setIsGeneratingPDF(true);
+      await generatePDFFromRecord(record);
+      // PDF will be automatically shared/saved through the share dialog
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      Alert.alert(
+        'Error',
+        'Failed to generate PDF. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   return (
     <Animated.View style={[styles.recordDetailOverlay, backdropStyle]}>
@@ -254,16 +276,32 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
       
       <Animated.View style={[styles.recordDetailContainer, detailStyle]}>
         <View style={styles.recordDetailHeader}>
-          <View>
+          <View style={styles.headerLeftSection}>
             <Text style={styles.recordDetailTitle}>Daily Work Summary</Text>
             <Text style={styles.recordDetailDate}>{record.date}</Text>
             <Text style={styles.recordDetailJob}>Job: {record.jobNumber}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <View style={styles.closeButtonInner}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.headerRightSection}>
+            <TouchableOpacity 
+              onPress={handleDownloadPDF} 
+              style={styles.downloadButton}
+              disabled={isGeneratingPDF}
+            >
+              {isGeneratingPDF ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.downloadIcon}>↓</Text>
+                  <Text style={styles.downloadText}>PDF</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <View style={styles.closeButtonInner}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <FlatList
@@ -335,6 +373,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8E8E93',
     fontWeight: '500',
+  },
+  headerLeftSection: {
+    flex: 1,
+  },
+  headerRightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  downloadButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+    minWidth: 60,
+  },
+  downloadIcon: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '700',
+    marginRight: 4,
+  },
+  downloadText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   closeButton: {
     padding: 8,

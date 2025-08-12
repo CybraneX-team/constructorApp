@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import axiosInstance from '../utils/axiosConfig';
 import { API_BASE_URL } from '../utils/apiConfig';
 // We'll use this to access site context from inside auth context
 // import { useSite } from './SiteContext';
@@ -63,7 +64,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string, superPassword?: string) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/login`, {
+      const response = await axiosInstance.post('/login', {
         email,
         password,
         superPassword,
@@ -98,7 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Attempting signup with:', { email, isAdmin, hasAccessKey: !!accessKey, apiUrl: `${API_BASE_URL}/signup` });
       
-      const response = await axios.post(`${API_BASE_URL}/signup`, {
+      const response = await axiosInstance.post('/signup', {
         email,
         password,
         isAdmin,
@@ -132,11 +133,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       console.log('🔄 Attempting to refresh token...');
-      const response = await axios.post(`${API_BASE_URL}/refresh`, {}, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await axiosInstance.post('/refresh', {});
 
       const { token: newToken } = response.data;
       

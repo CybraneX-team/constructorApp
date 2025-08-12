@@ -22,8 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSite, Site } from '../contexts/SiteContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import axios from 'axios';
-import { API_BASE_URL } from '../utils/apiConfig';
+import axiosInstance from '../utils/axiosConfig';
 
 const { width, height } = Dimensions.get('window');
 
@@ -58,7 +57,7 @@ const SiteSelectionScreen: React.FC = () => {
 
   const loadActiveSites = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/sites`);
+      const response = await axiosInstance.get('/sites');
       
       if (response.data.success) {
         setSites(response.data.sites || []);
@@ -71,6 +70,8 @@ const SiteSelectionScreen: React.FC = () => {
       if (error.response?.status === 401) {
         Alert.alert('Session Expired', 'Please log in again');
         logout();
+      } else if (error.response?.status === 403) {
+        Alert.alert('Access Denied', 'You do not have permission to access this resource.');
       } else {
         Alert.alert('Error', 'Failed to load sites. Please try again.');
       }
@@ -113,7 +114,7 @@ const SiteSelectionScreen: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/sites`, {
+      const response = await axiosInstance.post('/sites', {
         name: siteName,
         siteId: siteId,
         companyName: companyName,
