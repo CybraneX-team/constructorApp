@@ -7,7 +7,7 @@ export const config = {
   // Backend Configuration
   backend: {
     // Replace with your actual backend URL
-    baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || 'https://construction-backend-publ.onrender.com',
+  baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL,
     
     // API Endpoints
     endpoints: {
@@ -115,7 +115,7 @@ export const getEnvironmentConfig = () => {
         ...config,
         backend: {
           ...config.backend,
-          baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || 'https://construction-backend-publ.onrender.com',
+          baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL,
         },
       };
   }
