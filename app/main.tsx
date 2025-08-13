@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dimensions,
   Platform,
@@ -6,6 +6,7 @@ import {
   StatusBar,
   StyleSheet,
   View,
+  Alert,
 } from 'react-native';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
@@ -20,6 +21,9 @@ import RecordsList from '../components/RecordsList';
 import SearchOverlay from '../components/SearchOverlay';
 import { UploadStatus } from '../components/UploadStatus';
 import { useVoiceMemos } from '../hooks/useVoiceMemos';
+import * as ImagePicker from 'expo-image-picker';
+import MediaOptionsModal from '../components/MediaOptionsModal';
+import DescriptionPrompt from '../components/DescriptionPrompt';
 
 const VoiceMemosScreen = () => {
   const {
@@ -70,6 +74,152 @@ const VoiceMemosScreen = () => {
     console.log(Dimensions.get('window'));
   }, []);
   
+  // Media capture/pick state
+  const [showMediaOptions, setShowMediaOptions] = useState(false);
+  const [showDescriptionPrompt, setShowDescriptionPrompt] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+
+  const requestPermissions = async () => {
+    try {
+      console.log('🔐 Requesting camera and media library permissions...');
+      
+      const cam = await ImagePicker.requestCameraPermissionsAsync();
+      console.log('📷 Camera permission status:', cam.status);
+      
+      const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('📚 Media library permission status:', lib.status);
+      
+      if (cam.status !== 'granted') {
+        Alert.alert(
+          'Camera Permission Required',
+          'Please enable camera access in your device settings to take photos.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+      
+      if (lib.status !== 'granted') {
+        Alert.alert(
+          'Photos Permission Required', 
+          'Please enable photo library access in your device settings to select images.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+      
+      console.log('✅ All permissions granted');
+      return true;
+    } catch (error) {
+      console.error('❌ Error requesting permissions:', error);
+      Alert.alert('Permission Error', 'Failed to request permissions. Please try again.');
+      return false;
+    }
+  };
+
+  const openMediaOptions = async () => {
+    try {
+      console.log('📱 Opening media options...');
+      const ok = await requestPermissions();
+      if (!ok) {
+        console.log('❌ Permissions not granted, aborting');
+        return;
+      }
+      console.log('✅ Permissions granted, showing media options');
+      console.log('📱 Setting showMediaOptions to true');
+      setShowMediaOptions(true);
+    } catch (error) {
+      console.error('❌ Error in openMediaOptions:', error);
+      Alert.alert('Error', 'Failed to open media options. Please try again.');
+    }
+  };
+
+  const handleCapture = async () => {
+    try {
+      console.log('📷 Launching camera...');
+      
+      // Check if we're on a simulator
+      const isSimulator = Platform.OS === 'ios' && __DEV__;
+      if (isSimulator) {
+        Alert.alert(
+          'Camera Not Available',
+          'Camera is not available on simulator. Please use a real device to test camera functionality.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.85,
+        exif: false,
+      });
+      
+      console.log('📷 Camera result:', result);
+      
+      if (!result.canceled && result.assets?.length) {
+        const uris = result.assets.map((a) => a.uri);
+        console.log('✅ Images captured:', uris.length);
+        setSelectedImages((prev) => [...prev, ...uris]);
+        showDescriptionPromptSafely();
+      } else {
+        console.log('📷 Camera cancelled or no assets');
+      }
+    } catch (e) {
+      console.error('❌ Camera error:', e);
+      Alert.alert('Camera Error', `Failed to open camera: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handlePick = async () => {
+    try {
+      console.log('📚 Launching image picker...');
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        selectionLimit: 0,
+        quality: 0.85,
+      });
+      
+      console.log('📚 Picker result:', result);
+      
+      if (!result.canceled && result.assets?.length) {
+        const uris = result.assets.map((a) => a.uri);
+        console.log('✅ Images selected:', uris.length);
+        setSelectedImages((prev) => [...prev, ...uris]);
+        showDescriptionPromptSafely();
+      } else {
+        console.log('📚 Picker cancelled or no assets');
+      }
+    } catch (e) {
+      console.error('❌ Picker error:', e);
+      Alert.alert('Picker Error', `Failed to open image picker: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleCloseMediaOptions = () => {
+    console.log('❌ Closing media options modal');
+    setShowMediaOptions(false);
+  };
+
+  const handleDescriptionSubmit = (desc: string) => {
+    // TODO: persist images+description to backend when endpoint is ready
+    console.log('Images selected:', selectedImages);
+    console.log('Description:', desc);
+    setSelectedImages([]);
+    setShowDescriptionPrompt(false);
+    Alert.alert('Saved', 'Images and description saved.');
+  };
+
+  // Show description prompt with a tiny delay to avoid overlapping with picker closing animation on Android
+  const showDescriptionPromptSafely = () => {
+    setTimeout(() => setShowDescriptionPrompt(true), 150);
+  };
+
+  const handleMoveToSearchCircle = () => {
+    // "Search Records" is index 2 in initial memos
+    if (currentIndex !== 2) handleCircleClick(2);
+  };
 
   const { height, width } = Dimensions.get('window');
   const isIPhone16 = Platform.OS === 'ios' && height === 852 && width === 393;
@@ -119,6 +269,9 @@ const VoiceMemosScreen = () => {
             onPress={handleRecordPress}
             recordButtonScale={recordButtonScale}
             recordButtonOpacity={recordButtonOpacity}
+            onSearchPress={handleSearchPress}
+            onMoveToSearchCircle={handleMoveToSearchCircle}
+            onCameraPress={openMediaOptions}
           />
 
           {showRecordsList && (
@@ -149,6 +302,20 @@ const VoiceMemosScreen = () => {
             searchOverlayOpacity={searchOverlayOpacity}
             records={recordsList}
             onRecordClick={handleRecordClick}
+          />
+
+          {/* Media options and description prompt */}
+          <MediaOptionsModal
+            visible={showMediaOptions}
+            onClose={handleCloseMediaOptions}
+            onCapture={handleCapture}
+            onPick={handlePick}
+          />
+
+          <DescriptionPrompt
+            visible={showDescriptionPrompt}
+            onCancel={() => setShowDescriptionPrompt(false)}
+            onSubmit={handleDescriptionSubmit}
           />
 
           {/* Upload Status */}

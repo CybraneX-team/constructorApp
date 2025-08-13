@@ -1,4 +1,4 @@
-package com.saiyam12.voiceai
+package com.cybranex.voiceai
 
 import android.app.Application
 import android.content.res.Configuration
