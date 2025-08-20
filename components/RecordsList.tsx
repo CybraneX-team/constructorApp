@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { RecordsListProps } from './types';
+import { recordingService } from '../services/recordingService';
+import { useAuth } from '../contexts/AuthContext';
 
 // Separate component for record item to avoid hook violations
 const RecordItem: React.FC<{
@@ -29,6 +31,30 @@ const RecordItem: React.FC<{
       { scale: withTiming(1, { duration: 300 + index * 50 }) }
     ],
   }));
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [summary, setSummary] = useState<any | null>(null);
+  const { token } = useAuth();
+
+  const toggleSummary = async () => {
+    if (!isOpen) {
+      if (!summary && token) {
+        try {
+          setIsLoading(true);
+          const res = await recordingService.getRecordingSummary(item.id, token);
+          if (res.success) setSummary(res.summary);
+        } catch (e) {
+          console.error('Failed to load summary for', item.id, e);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      setIsOpen(true);
+    } else {
+      setIsOpen(false);
+    }
+  };
 
   return (
     <Animated.View style={[styles.recordItemContainer, animatedStyle]}>
@@ -56,14 +82,50 @@ const RecordItem: React.FC<{
           <View style={styles.durationContainer}>
             <Text style={styles.recordDuration}>{item.duration}</Text>
           </View>
-          <View style={[styles.recordTypeLabel, { backgroundColor: getTypeColor(item.type) }]}>
-            <Text style={styles.recordTypeLabelText}>{item.type}</Text>
-          </View>
+          <TouchableOpacity onPress={toggleSummary} style={styles.summaryPill} activeOpacity={0.8}>
+            <Text style={styles.summaryPillText}>{isOpen ? 'Hide' : 'Summary'}</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
+
+      {isOpen && (
+        <View style={styles.summaryContainer}>
+          {isLoading ? (
+            <Text style={styles.summaryLoading}>Loading summary…</Text>
+          ) : summary ? (
+            <View>
+              {renderSummary(summary)}
+            </View>
+          ) : (
+            <Text style={styles.summaryEmpty}>No summary available.</Text>
+          )}
+        </View>
+      )}
     </Animated.View>
   );
 };
+
+function renderSummary(summary: any) {
+  // Expecting a JSON schema from backend; render common fields if present
+  // Fallback to a pretty-printed JSON
+  if (summary?.title || summary?.overview) {
+    return (
+      <View style={{ gap: 6 }}>
+        {summary.title && <Text style={styles.summaryTitle}>{summary.title}</Text>}
+        {summary.overview && <Text style={styles.summaryText}>{summary.overview}</Text>}
+        {Array.isArray(summary.highlights) && summary.highlights.length > 0 && (
+          <View style={{ gap: 4 }}>
+            <Text style={styles.summarySectionHeader}>Highlights</Text>
+            {summary.highlights.map((h: string, i: number) => (
+              <Text key={i} style={styles.summaryBullet}>• {h}</Text>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+  return <Text style={styles.summaryCode}>{JSON.stringify(summary, null, 2)}</Text>;
+}
 
 const RecordsList: React.FC<RecordsListProps> = ({ 
   records, 
@@ -304,7 +366,7 @@ const styles = StyleSheet.create({
   },
   recordRightSection: {
     alignItems: 'flex-end',
-    minWidth: 80,
+    minWidth: 100,
   },
   durationContainer: {
     backgroundColor: '#F8F9FA',
@@ -336,6 +398,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  summaryPill: { backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  summaryPillText: { color: '#3B82F6', fontWeight: '800', fontSize: 12 },
+  summaryContainer: { marginTop: 8, marginHorizontal: 12, padding: 12, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#EEF2F7' },
+  summaryLoading: { color: '#6B7280', fontStyle: 'italic' },
+  summaryEmpty: { color: '#9CA3AF' },
+  summaryTitle: { fontWeight: '800', color: '#111827', marginBottom: 4 },
+  summarySectionHeader: { fontWeight: '800', color: '#111827' },
+  summaryText: { color: '#111827' },
+  summaryBullet: { color: '#111827' },
+  summaryCode: { color: '#374151', fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontSize: 12 },
 });
 
 export default RecordsList; 

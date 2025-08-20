@@ -30,7 +30,7 @@ class RecordingService {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || config.backend.baseUrl;
+    this.baseUrl = baseUrl ?? String(config.backend.baseUrl || '');
     console.log('🔧 RecordingService initialized with URL:', this.baseUrl);
     console.log('🔧 Config backend baseUrl:', config.backend.baseUrl);
     console.log('🔧 Environment variable EXPO_PUBLIC_BACKEND_URL:', process.env.EXPO_PUBLIC_BACKEND_URL);
@@ -230,6 +230,7 @@ class RecordingService {
       jobNumber: string;
       type: string;
       transcription?: string;
+      durationOverrideMs?: number;
     },
     token?: string
   ): Promise<UploadResponse> {
@@ -238,7 +239,7 @@ class RecordingService {
       
       const status = recording.getStatus();
       const uri = recording.uri;
-      const duration = status.durationMillis;
+      const duration = metadata.durationOverrideMs ?? status.durationMillis;
 
       if (!uri) {
         throw new Error('Recording URI is null');
@@ -275,7 +276,6 @@ class RecordingService {
         'Accept': 'application/json',
       };
       
-      // Add authorization header if token is provided
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
         console.log('🔑 Including authorization token in request');
@@ -310,7 +310,6 @@ class RecordingService {
     } catch (error) {
       console.error('❌ JSON Upload failed:', error);
       
-      // More detailed error logging
       if (error instanceof TypeError && error.message === 'Network request failed') {
         console.error('🔍 Network debugging info:');
         console.error('   - Backend URL:', this.baseUrl);
@@ -595,6 +594,34 @@ class RecordingService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown upload error',
       };
+    }
+  }
+
+  async getRecordingSummary(id: string, token: string): Promise<{
+    success: boolean;
+    summary: any;
+    error?: string;
+  }> {
+    try {
+      const url = `${this.baseUrl}/recordings/${encodeURIComponent(id)}/summary`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Summary fetch failed: ${response.status} ${text}`);
+      }
+
+      const data = await response.json();
+      return { success: true, summary: data };
+    } catch (error: any) {
+      console.error('Failed to fetch recording summary:', error);
+      return { success: false, summary: null, error: error?.message || 'Unknown error' };
     }
   }
 

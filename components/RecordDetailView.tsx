@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { RecordDetailViewProps } from './types';
 import { generatePDFFromRecord } from '../utils/pdfGenerator';
+import { useAuth } from '../contexts/AuthContext';
+import { recordingService } from '../services/recordingService';
 
 const screenWidth = Dimensions.get('window').width;
 const isSmallScreen = screenWidth < 360;
@@ -239,6 +241,27 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   backdropOpacity 
 }) => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [resolvedRecord, setResolvedRecord] = useState(record);
+  const { token } = useAuth();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSummary = async () => {
+      try {
+        if (!token || !record?.id) return;
+        const res = await recordingService.getRecordingSummary(record.id, token);
+        if (!res.success || !res.summary) return;
+        const mapped = mapSummaryToRecordDetail(record, res.summary);
+        if (isMounted) setResolvedRecord(mapped);
+      } catch (e) {
+        console.error('Failed to resolve summary for record', record.id, e);
+      }
+    };
+
+    loadSummary();
+    return () => { isMounted = false; };
+  }, [record?.id, token]);
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
@@ -252,15 +275,10 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   const handleDownloadPDF = async () => {
     try {
       setIsGeneratingPDF(true);
-      await generatePDFFromRecord(record);
-      // PDF will be automatically shared/saved through the share dialog
+      await generatePDFFromRecord(resolvedRecord);
     } catch (error) {
       console.error('Error generating PDF:', error);
-      Alert.alert(
-        'Error',
-        'Failed to generate PDF. Please try again.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Error', 'Failed to generate PDF. Please try again.', [{ text: 'OK' }]);
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -268,25 +286,17 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
 
   return (
     <Animated.View style={[styles.recordDetailOverlay, backdropStyle]}>
-      <TouchableOpacity 
-        style={styles.recordDetailBackdrop} 
-        onPress={onClose}
-        activeOpacity={1}
-      />
+      <TouchableOpacity style={styles.recordDetailBackdrop} onPress={onClose} activeOpacity={1} />
       
       <Animated.View style={[styles.recordDetailContainer, detailStyle]}>
         <View style={styles.recordDetailHeader}>
           <View style={styles.headerLeftSection}>
             <Text style={styles.recordDetailTitle}>Daily Work Summary</Text>
-            <Text style={styles.recordDetailDate}>{record.date}</Text>
-            <Text style={styles.recordDetailJob}>Job: {record.jobNumber}</Text>
+            <Text style={styles.recordDetailDate}>{resolvedRecord.date}</Text>
+            <Text style={styles.recordDetailJob}>Job: {resolvedRecord.jobNumber}</Text>
           </View>
           <View style={styles.headerRightSection}>
-            <TouchableOpacity 
-              onPress={handleDownloadPDF} 
-              style={styles.downloadButton}
-              disabled={isGeneratingPDF}
-            >
+            <TouchableOpacity onPress={handleDownloadPDF} style={styles.downloadButton} disabled={isGeneratingPDF}>
               {isGeneratingPDF ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
@@ -308,12 +318,44 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.recordDetailContent}
           data={[{ key: 'content' }]}
-          renderItem={() => <DetailContent record={record} />}
+          renderItem={() => <DetailContent record={resolvedRecord} />}
         />
       </Animated.View>
     </Animated.View>
   );
 };
+
+function mapSummaryToRecordDetail(existing: any, summary: any): any {
+  // Map backend JSON summary into existing structure. Provide safe defaults.
+  return {
+    ...existing,
+    date: summary.date || existing.date,
+    jobNumber: summary.jobNumber || existing.jobNumber,
+    dailyActivities: summary.activities?.text || summary.overview || existing.dailyActivities,
+    laborData: {
+      manager: summary.labor?.manager || existing.laborData.manager,
+      foreman: summary.labor?.foreman || existing.laborData.foreman,
+      carpenter: summary.labor?.carpenter || existing.laborData.carpenter,
+      skillLaborer: summary.labor?.skillLaborer || existing.laborData.skillLaborer,
+      carpenterExtra: summary.labor?.carpenterExtra || existing.laborData.carpenterExtra,
+    },
+    subcontractors: {
+      superiorTeamRebar: summary.subcontractors?.superiorTeamRebar || existing.subcontractors.superiorTeamRebar,
+    },
+    materialsDeliveries: {
+      argosClass4: summary.materials?.argosClass4 || existing.materialsDeliveries.argosClass4,
+      expansionJoint: summary.materials?.expansionJoint || existing.materialsDeliveries.expansionJoint,
+    },
+    equipment: {
+      truck: summary.equipment?.truck || existing.equipment.truck,
+      equipmentTrailer: summary.equipment?.equipmentTrailer || existing.equipment.equipmentTrailer,
+      fuel: summary.equipment?.fuel || existing.equipment.fuel,
+      miniExcavator: summary.equipment?.miniExcavator || existing.equipment.miniExcavator,
+      closedToolTrailer: summary.equipment?.closedToolTrailer || existing.equipment.closedToolTrailer,
+      skidStir: summary.equipment?.skidStir || existing.equipment.skidStir,
+    },
+  };
+}
 
 const styles = StyleSheet.create({
   // Record Detail View Styles
