@@ -11,8 +11,10 @@ import {
 } from 'react-native-reanimated';
 import { Memo, RecordDetail } from '../components/types';
 import { recordingService } from '../services/recordingService';
-import { getDetailedRecord, initialMemos, initialRecordsList } from '../utils/recordsData';
+import { initialMemos } from '../utils/recordsData';
 import { useAuth } from '../contexts/AuthContext';
+// Removed expo-av (deprecated). We compute duration via recorder status with a brief delay
+// and fall back to estimating from file size and configured bit rate.
 
 const screenHeight = Dimensions.get('window').height;
 
@@ -52,7 +54,7 @@ export const useVoiceMemos = () => {
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<RecordDetail | null>(null);
   const [memos, setMemos] = useState<Memo[]>(initialMemos);
-  const [recordsList, setRecordsList] = useState(initialRecordsList);
+  const [recordsList, setRecordsList] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -78,6 +80,24 @@ export const useVoiceMemos = () => {
   const recordDetailBackdropOpacity = useSharedValue(0);
   const searchOverlayTranslateY = useSharedValue(screenHeight);
   const searchOverlayOpacity = useSharedValue(0);
+
+  // Fetch recordings from backend
+  const fetchRecordings = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await recordingService.getAllRecordings(token);
+      if (res.success) {
+        const mapped = (res.recordings || []).map(mapBackendRecordingToListItem);
+        setRecordsList(mapped);
+      }
+    } catch (e) {
+      console.error('Failed to load recordings:', e);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchRecordings();
+  }, [fetchRecordings]);
 
   // Get current title based on active circle and recording state
   const getCurrentTitle = () => {
@@ -190,6 +210,9 @@ export const useVoiceMemos = () => {
 
   // Records management functions
   const handleAccessRecords = () => {
+    // Refresh recordings when opening
+    fetchRecordings();
+
     if (!showRecordsList) {
       setShowRecordsList(true);
       
@@ -223,8 +246,9 @@ export const useVoiceMemos = () => {
   };
 
   const handleRecordClick = (recordId: string) => {
-    const detailedRecord = getDetailedRecord(recordId);
-    setSelectedRecord(detailedRecord);
+    const base = recordsList.find(r => r.id === recordId);
+    const skeleton = createEmptyRecordDetailFromListItem(base);
+    setSelectedRecord(skeleton);
     setShowRecordDetail(true);
     
     recordDetailBackdropOpacity.value = withTiming(1, { duration: 200 });
@@ -250,18 +274,15 @@ export const useVoiceMemos = () => {
   // Search overlay functions
   const handleSearchPress = () => {
     setShowSearchOverlay(true);
-    // Ultra-smooth entrance with custom spring physics
     searchOverlayTranslateY.value = withSpring(0, {
       damping: 35,
       stiffness: 150,
       mass: 1.5,
     });
-    // Gradual opacity fade-in
     searchOverlayOpacity.value = withTiming(1, { duration: 800 });
   };
 
   const handleCloseSearch = () => {
-    // Dramatic exit animation
     searchOverlayTranslateY.value = withSpring(screenHeight, {
       damping: 40,
       stiffness: 200,
@@ -270,6 +291,32 @@ export const useVoiceMemos = () => {
     searchOverlayOpacity.value = withTiming(0, { duration: 600 }, () => {
       runOnJS(setShowSearchOverlay)(false);
     });
+  };
+
+  // Helper: build today's title prefix like AUG-20-2025
+  const getTodayTitlePrefix = () => {
+    const d = new Date();
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const mm = months[d.getMonth()];
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
+
+  // Helper: compute next per-day index by scanning existing recordsList titles
+  const getNextDailyIndex = (prefix: string) => {
+    let maxIdx = 0;
+    try {
+      for (const r of recordsList) {
+        if (typeof r?.title === 'string' && r.title.startsWith(prefix + '_')) {
+          const parts = r.title.split('_');
+          const maybeNum = parts[1];
+          const n = parseInt(maybeNum, 10);
+          if (!isNaN(n)) maxIdx = Math.max(maxIdx, n);
+        }
+      }
+    } catch {}
+    return maxIdx + 1;
   };
 
   // Audio recording functions
@@ -304,29 +351,68 @@ export const useVoiceMemos = () => {
     } else {
       try {
         await audioRecorder.stop();
-        const uri = audioRecorder.uri;
         const status = audioRecorder.getStatus();
         
         console.log('Recording stopped');
         console.log('Recording status:', status);
-        console.log('Recording URI:', uri);
+        console.log('Recording URI:', audioRecorder.uri);
         
-        if (uri) {
-          // Start upload process
-          setIsUploading(true);
-          setUploadProgress(0);
-          
-          const uploadResult = await uploadRecording(audioRecorder);
-          
+        if (audioRecorder.uri) {
+          // Try to read duration again after a short delay (recorder may not flush immediately)
+          let actualDurationMs = status.durationMillis || 0;
+          try {
+            await new Promise(res => setTimeout(res, 200));
+            const status2 = audioRecorder.getStatus();
+            if (status2.durationMillis && status2.durationMillis > 0) {
+              actualDurationMs = status2.durationMillis;
+            }
+          } catch {}
+
+          // Fallback: estimate duration from file size and configured bit rate (128 kbps)
+          if (!actualDurationMs || actualDurationMs <= 0) {
+            try {
+              const head = await fetch(audioRecorder.uri as string, { method: 'HEAD' });
+              const len = head.headers.get('content-length');
+              if (len) {
+                const bytes = parseInt(len, 10);
+                const bitRate = 128000; // bits per second (from recorder setup)
+                const seconds = (bytes * 8) / bitRate;
+                actualDurationMs = Math.max(0, Math.round(seconds * 1000));
+              }
+            } catch {}
+          }
+
+          // Update memo UI duration
+          const formattedDuration = formatDuration(actualDurationMs || 0);
+          setMemos(prev => prev.map(memo => 
+            memo.id === '1' 
+              ? { ...memo, duration: formattedDuration }
+              : memo
+          ));
+
+          // Build dynamic title like AUG-20-2025_1
+          const prefix = getTodayTitlePrefix();
+          const nextIdx = getNextDailyIndex(prefix);
+          const generatedTitle = `${prefix}_${nextIdx}`;
+
+          // Proceed with upload using JSON path so we can include computed duration explicitly
+          const uploadResult = await recordingService.uploadRecordingAsJSON(audioRecorder, {
+            title: generatedTitle,
+            jobNumber: 'CFX 417-151', // TODO: source from context
+            type: 'Voice Memo',
+            transcription: liveTranscription || undefined,
+            durationOverrideMs: actualDurationMs,
+          }, token || undefined);
+
           if (uploadResult.success) {
             Alert.alert('Success', 'Recording uploaded successfully!');
-            // Add the new recording to the records list
+            // Add/update the new recording in the records list with accurate duration
             const newRecord = {
               id: uploadResult.recordingId || `rec_${Date.now()}`,
-              title: 'New Recording',
-              duration: formatDuration(status.durationMillis || 0),
+              title: generatedTitle,
+              duration: formattedDuration,
               date: new Date().toLocaleString(),
-              jobNumber: 'CFX 417-151', // This should come from app context/settings
+              jobNumber: 'CFX 417-151', // TODO: from context
               type: 'Voice Memo'
             };
             setRecordsList(prev => [newRecord, ...prev]);
@@ -369,8 +455,13 @@ export const useVoiceMemos = () => {
           : memo
       ));
 
+      // Build dynamic title like AUG-20-2025_1
+      const prefix = getTodayTitlePrefix();
+      const nextIdx = getNextDailyIndex(prefix);
+      const generatedTitle = `${prefix}_${nextIdx}`;
+
       const result = await recordingService.uploadRecordingAsJSON(recordingToUpload, {
-        title: 'Voice Recording',
+        title: generatedTitle,
         jobNumber: 'CFX 417-151', // This should come from app context/settings
         type: 'Voice Memo',
         transcription: liveTranscription || undefined,
@@ -568,4 +659,48 @@ export const useVoiceMemos = () => {
     uploadRecording,
     formatDuration,
   };
-}; 
+};
+
+function mapBackendRecordingToListItem(rec: any) {
+  return {
+    id: rec.id || rec._id || `rec_${Date.now()}`,
+    title: rec.title || 'Recording',
+    duration: rec.duration || '00:00',
+    date: rec.date || new Date().toLocaleString(),
+    jobNumber: rec.jobNumber || '-',
+    type: rec.type || 'Voice Memo',
+  };
+}
+
+function createEmptyRecordDetailFromListItem(item: any): RecordDetail {
+  return {
+    id: item?.id || `rec_${Date.now()}`,
+    title: item?.title || 'Recording',
+    duration: item?.duration || '00:00',
+    date: item?.date || new Date().toLocaleString(),
+    jobNumber: item?.jobNumber || '-',
+    laborData: {
+      manager: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
+      foreman: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
+      carpenter: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
+      skillLaborer: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
+      carpenterExtra: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
+    },
+    subcontractors: {
+      superiorTeamRebar: { employees: 0, hours: 0 },
+    },
+    dailyActivities: '',
+    materialsDeliveries: {
+      argosClass4: { qty: '', uom: '', unitRate: '$-', tax: '$-', total: '$-' },
+      expansionJoint: { qty: '', uom: '', unitRate: '$-', tax: '$-', total: '$-' },
+    },
+    equipment: {
+      truck: { days: 0, monthlyRate: '$-', itemRate: '$-' },
+      equipmentTrailer: { days: 0, monthlyRate: '$-', itemRate: '$-' },
+      fuel: { days: 0, monthlyRate: '$-', itemRate: '$-' },
+      miniExcavator: { days: 0, monthlyRate: '$-', itemRate: '$-' },
+      closedToolTrailer: { days: 0, monthlyRate: '$-', itemRate: '$-' },
+      skidStir: { days: 0, monthlyRate: '$-', itemRate: '$-' },
+    },
+  };
+} 
