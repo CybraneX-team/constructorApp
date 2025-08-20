@@ -82,9 +82,9 @@ const RecordItem: React.FC<{
           <View style={styles.durationContainer}>
             <Text style={styles.recordDuration}>{item.duration}</Text>
           </View>
-          <TouchableOpacity onPress={toggleSummary} style={styles.summaryPill} activeOpacity={0.8}>
+          {/* <TouchableOpacity onPress={toggleSummary} style={styles.summaryPill} activeOpacity={0.8}>
             <Text style={styles.summaryPillText}>{isOpen ? 'Hide' : 'Summary'}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       </TouchableOpacity>
 

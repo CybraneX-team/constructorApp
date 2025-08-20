@@ -662,12 +662,31 @@ export const useVoiceMemos = () => {
 };
 
 function mapBackendRecordingToListItem(rec: any) {
+  // Coerce duration from various possible backend fields
+  const toMmSs = (msOrSec: any) => {
+    if (msOrSec === undefined || msOrSec === null) return undefined;
+    let ms = Number(msOrSec);
+    if (!isFinite(ms)) return undefined;
+    // If looks like seconds (small number), convert to ms
+    if (ms < 1000) ms = ms * 1000;
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const durationStr = (
+    rec.duration && typeof rec.duration === 'string' && rec.duration.includes(':') ? rec.duration :
+    rec.metadata?.duration && typeof rec.metadata.duration === 'string' && rec.metadata.duration.includes(':') ? rec.metadata.duration :
+    toMmSs(rec.durationMs ?? rec.duration_ms ?? rec.lengthMs ?? rec.length_ms ?? rec.audioDurationMs ?? rec.audio_duration_ms ?? rec.seconds ?? rec.durationSeconds ?? rec.audio?.durationMs)
+  ) || '00:00';
+
   return {
     id: rec.id || rec._id || `rec_${Date.now()}`,
     title: rec.title || 'Recording',
-    duration: rec.duration || '00:00',
-    date: rec.date || new Date().toLocaleString(),
-    jobNumber: rec.jobNumber || '-',
+    duration: durationStr,
+    date: rec.date || rec.createdAt || rec.created_at || new Date().toLocaleString(),
+    jobNumber: rec.jobNumber || rec.job_number || rec.job || '-',
     type: rec.type || 'Voice Memo',
   };
 }

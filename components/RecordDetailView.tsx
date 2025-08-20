@@ -236,13 +236,17 @@ const EquipmentCard = ({ title, data, color }: { title: string; data: any; color
 // --- Helpers to normalize labor data and compute hours when missing ---
 function parseTimeToMinutes(t?: string): number | null {
   if (!t) return null;
-  const s = String(t).trim();
+  let s = String(t).trim();
+  // Normalize variants like "a.m.", "p. m.", unicode periods, etc.
+  s = s.replace(/\./g, '').replace(/\s+/g, ' ');
   // Expect formats like "6:30 AM", "06:30 am", "6 AM", "18:00" etc.
-  const ampmMatch = s.match(/^\s*(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM|am|pm)\s*$/);
+  const ampmMatch = s.match(/^\s*(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM|am|pm|a|p)\s*$/);
   if (ampmMatch) {
     let h = Number(ampmMatch[1]);
     const m = Number(ampmMatch[2] ?? 0);
-    const mer = ampmMatch[3].toLowerCase();
+    let mer = ampmMatch[3].toLowerCase();
+    if (mer === 'a') mer = 'am';
+    if (mer === 'p') mer = 'pm';
     if (mer === 'pm' && h !== 12) h += 12;
     if (mer === 'am' && h === 12) h = 0;
     if (h < 0 || h > 23 || m < 0 || m > 59) return null;
@@ -269,9 +273,43 @@ function computeHours(start?: string, finish?: string): string | null {
   return null;
 }
 
+function coalesceString(...vals: any[]): string {
+  for (const v of vals) {
+    if (v === undefined || v === null) continue;
+    const s = String(v);
+    if (s.trim() !== '') return s;
+  }
+  return '';
+}
+
 function normalizeLaborRow(row: any): any {
   const safe = row || { startTime: '', finishTime: '', hours: '', rate: '', total: '' };
-  const hasHours = safe.hours !== undefined && safe.hours !== null && String(safe.hours).trim() !== '' && String(safe.hours) !== '0' && String(safe.hours) !== '0.00';
+
+  // Accept alternate key names from the backend
+  const start = coalesceString(
+    safe.startTime,
+    safe.start_time,
+    safe.start,
+    safe.arrivalTime,
+    safe.arrival_time,
+    safe.arrival
+  );
+  const finish = coalesceString(
+    safe.finishTime,
+    safe.finish_time,
+    safe.finish,
+    safe.endTime,
+    safe.end_time,
+    safe.end,
+    safe.departureTime,
+    safe.departure_time,
+    safe.departure
+  );
+
+  safe.startTime = start;
+  safe.finishTime = finish;
+
+  const hasHours = safe.hours !== undefined && safe.hours !== null && String(safe.hours).trim() !== '' && !/^0+(\.0+)?$/.test(String(safe.hours).trim());
   if (!hasHours) {
     const h = computeHours(safe.startTime, safe.finishTime);
     if (h != null) safe.hours = h;
@@ -372,33 +410,52 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
 };
 
 function mapSummaryToRecordDetail(existing: any, summary: any): any {
-  // Map backend JSON summary into existing structure. Provide safe defaults.
-  const mapped = {
+  // Some backends wrap real data inside a `summary` key. Unwrap if present.
+  const s = summary && typeof summary === 'object' && summary.summary ? summary.summary : summary;
+
+  // Accept multiple backend shapes: labor, laborData, labor_data
+  const laborSrcRaw = (s.labor || s.laborData || s.labor_data || {}) as any;
+  // Case-insensitive role keys and common variants
+  const roleMap: any = {};
+  for (const k of Object.keys(laborSrcRaw)) roleMap[k.toLowerCase()] = (laborSrcRaw as any)[k];
+  const laborSrc: any = {
+    manager: roleMap['manager'],
+    foreman: roleMap['foreman'],
+    carpenter: roleMap['carpenter'],
+    skillLaborer: roleMap['skilllaborer'] || roleMap['skill_laborer'] || roleMap['skilledlaborer'] || roleMap['skilled_laborer'],
+    carpenterExtra: roleMap['carpenterextra'] || roleMap['carpenter_extra'] || roleMap['carpenter (extra)'],
+  };
+
+  const subcontractorsSrc = s.subcontractors || s.subcontractor || {};
+  const materialsSrc = s.materialsDeliveries || s.materials || {};
+  const equipmentSrc = s.equipment || {};
+
+const mapped = {
     ...existing,
-    date: summary.date || existing.date,
-    jobNumber: summary.jobNumber || existing.jobNumber,
-    dailyActivities: summary.activities?.text || summary.overview || existing.dailyActivities,
+    date: summary.date || s.date || existing.date,
+    jobNumber: summary.jobNumber || s.jobNumber || existing.jobNumber,
+    dailyActivities: s.activities?.text || s.activities?.description || s.dailyActivities || s.daily_activities || s.overview || existing.dailyActivities,
     laborData: {
-      manager: summary.labor?.manager || existing.laborData.manager,
-      foreman: summary.labor?.foreman || existing.laborData.foreman,
-      carpenter: summary.labor?.carpenter || existing.laborData.carpenter,
-      skillLaborer: summary.labor?.skillLaborer || existing.laborData.skillLaborer,
-      carpenterExtra: summary.labor?.carpenterExtra || existing.laborData.carpenterExtra,
+      manager: laborSrc.manager || existing.laborData.manager,
+      foreman: laborSrc.foreman || existing.laborData.foreman,
+      carpenter: laborSrc.carpenter || existing.laborData.carpenter,
+      skillLaborer: laborSrc.skillLaborer || laborSrc.skill_laborer || existing.laborData.skillLaborer,
+      carpenterExtra: laborSrc.carpenterExtra || laborSrc.carpenter_extra || existing.laborData.carpenterExtra,
     },
     subcontractors: {
-      superiorTeamRebar: summary.subcontractors?.superiorTeamRebar || existing.subcontractors.superiorTeamRebar,
+      superiorTeamRebar: subcontractorsSrc.superiorTeamRebar || subcontractorsSrc.superior_team_rebar || existing.subcontractors.superiorTeamRebar,
     },
     materialsDeliveries: {
-      argosClass4: summary.materials?.argosClass4 || existing.materialsDeliveries.argosClass4,
-      expansionJoint: summary.materials?.expansionJoint || existing.materialsDeliveries.expansionJoint,
+      argosClass4: materialsSrc.argosClass4 || materialsSrc.argos_class_4 || existing.materialsDeliveries.argosClass4,
+      expansionJoint: materialsSrc.expansionJoint || materialsSrc.expansion_joint || existing.materialsDeliveries.expansionJoint,
     },
     equipment: {
-      truck: summary.equipment?.truck || existing.equipment.truck,
-      equipmentTrailer: summary.equipment?.equipmentTrailer || existing.equipment.equipmentTrailer,
-      fuel: summary.equipment?.fuel || existing.equipment.fuel,
-      miniExcavator: summary.equipment?.miniExcavator || existing.equipment.miniExcavator,
-      closedToolTrailer: summary.equipment?.closedToolTrailer || existing.equipment.closedToolTrailer,
-      skidStir: summary.equipment?.skidStir || existing.equipment.skidStir,
+      truck: equipmentSrc.truck || existing.equipment.truck,
+      equipmentTrailer: equipmentSrc.equipmentTrailer || equipmentSrc['14k EQUIPMENT TRAILER'] || equipmentSrc.trailer || existing.equipment.equipmentTrailer,
+      fuel: equipmentSrc.fuel || existing.equipment.fuel,
+      miniExcavator: equipmentSrc.miniExcavator || equipmentSrc.mini_excavator || existing.equipment.miniExcavator,
+      closedToolTrailer: equipmentSrc.closedToolTrailer || equipmentSrc.closed_tool_trailer || existing.equipment.closedToolTrailer,
+      skidStir: equipmentSrc.skidStir || equipmentSrc.skid_stir || existing.equipment.skidStir,
     },
   } as any;
 
