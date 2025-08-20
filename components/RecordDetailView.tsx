@@ -233,6 +233,52 @@ const EquipmentCard = ({ title, data, color }: { title: string; data: any; color
   </View>
 );
 
+// --- Helpers to normalize labor data and compute hours when missing ---
+function parseTimeToMinutes(t?: string): number | null {
+  if (!t) return null;
+  const s = String(t).trim();
+  // Expect formats like "6:30 AM", "06:30 am", "6 AM", "18:00" etc.
+  const ampmMatch = s.match(/^\s*(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM|am|pm)\s*$/);
+  if (ampmMatch) {
+    let h = Number(ampmMatch[1]);
+    const m = Number(ampmMatch[2] ?? 0);
+    const mer = ampmMatch[3].toLowerCase();
+    if (mer === 'pm' && h !== 12) h += 12;
+    if (mer === 'am' && h === 12) h = 0;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+  }
+  const twentyFour = s.match(/^\s*(\d{1,2})(?::(\d{1,2}))\s*$/);
+  if (twentyFour) {
+    const h = Number(twentyFour[1]);
+    const m = Number(twentyFour[2] ?? 0);
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+  }
+  return null;
+}
+
+function computeHours(start?: string, finish?: string): string | null {
+  const sm = parseTimeToMinutes(start);
+  const fm = parseTimeToMinutes(finish);
+  if (sm == null || fm == null) return null;
+  let diff = fm - sm;
+  if (diff < 0) diff += 24 * 60; // overnight shift
+  const hours = diff / 60;
+  if (Number.isFinite(hours)) return hours.toFixed(2);
+  return null;
+}
+
+function normalizeLaborRow(row: any): any {
+  const safe = row || { startTime: '', finishTime: '', hours: '', rate: '', total: '' };
+  const hasHours = safe.hours !== undefined && safe.hours !== null && String(safe.hours).trim() !== '' && String(safe.hours) !== '0' && String(safe.hours) !== '0.00';
+  if (!hasHours) {
+    const h = computeHours(safe.startTime, safe.finishTime);
+    if (h != null) safe.hours = h;
+  }
+  return safe;
+}
+
 const RecordDetailView: React.FC<RecordDetailViewProps> = ({ 
   record, 
   onClose, 
@@ -327,7 +373,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
 
 function mapSummaryToRecordDetail(existing: any, summary: any): any {
   // Map backend JSON summary into existing structure. Provide safe defaults.
-  return {
+  const mapped = {
     ...existing,
     date: summary.date || existing.date,
     jobNumber: summary.jobNumber || existing.jobNumber,
@@ -354,7 +400,18 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
       closedToolTrailer: summary.equipment?.closedToolTrailer || existing.equipment.closedToolTrailer,
       skidStir: summary.equipment?.skidStir || existing.equipment.skidStir,
     },
+  } as any;
+
+  // Normalize labor rows to ensure hours is computed when missing
+  mapped.laborData = {
+    manager: normalizeLaborRow(mapped.laborData.manager),
+    foreman: normalizeLaborRow(mapped.laborData.foreman),
+    carpenter: normalizeLaborRow(mapped.laborData.carpenter),
+    skillLaborer: normalizeLaborRow(mapped.laborData.skillLaborer),
+    carpenterExtra: normalizeLaborRow(mapped.laborData.carpenterExtra),
   };
+
+  return mapped;
 }
 
 const styles = StyleSheet.create({
