@@ -18,7 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 const screenHeight = Dimensions.get('window').height;
 
-export const useVoiceMemos = () => {
+export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) => void }) => {
   // Get authentication context
   const { token } = useAuth();
   
@@ -46,6 +46,7 @@ export const useVoiceMemos = () => {
   
   // State
   const [isRecording, setIsRecording] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [liveTranscription, setLiveTranscription] = useState('');
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0));
@@ -103,8 +104,10 @@ export const useVoiceMemos = () => {
   const getCurrentTitle = () => {
     const currentMemo = memos[currentIndex];
     if (currentIndex === 0) {
-      // For the first circle, show different text based on recording state
-      return isRecording ? 'CAPTURE\nNOW' : 'WORK\nPROGRESS';
+      // For the first circle, show different text based on state
+      if (isRecording || isSaving) return 'CAPTURE\nNOW';
+      // Only show WORK PROGRESS when not recording or saving
+      return 'WORK\nPROGRESS';
     }
     return currentMemo.title.toUpperCase().replace('\\n', ' ');
   };
@@ -319,127 +322,144 @@ export const useVoiceMemos = () => {
     return maxIdx + 1;
   };
 
-  // Audio recording functions
-  const handleRecordPress = async () => {
-    if (!isRecording) {
-      try {
-        await setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
-        });
+  // Audio recording functions - split into start and stop for hold-to-record
+  const handleStartRecording = async () => {
+    if (isRecording) return; // Already recording
+    
+    try {
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
 
-        // Use the audioRecorder from the top level
-        await audioRecorder.prepareToRecordAsync();
-        audioRecorder.record();
-        setIsRecording(true);
-        console.log('Recording started');
+      // Use the audioRecorder from the top level
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setIsRecording(true);
+      console.log('Recording started');
 
-        recordButtonOpacity.value = withRepeat(
-          withTiming(0.8, { duration: 1000 }),
-          -1,
-          true
-        );
-        recordButtonScale.value = withRepeat(
-          withTiming(1.1, { duration: 1000 }),
-          -1,
-          true
-        );
-      } catch (error) {
-        console.error('Failed to start recording:', error);
-        Alert.alert('Recording Error', 'Failed to start recording. Please check your permissions.');
-      }
-    } else {
-      try {
-        await audioRecorder.stop();
-        const status = audioRecorder.getStatus();
-        
-        console.log('Recording stopped');
-        console.log('Recording status:', status);
-        console.log('Recording URI:', audioRecorder.uri);
-        
-        if (audioRecorder.uri) {
-          // Try to read duration again after a short delay (recorder may not flush immediately)
-          let actualDurationMs = status.durationMillis || 0;
-          try {
-            await new Promise(res => setTimeout(res, 200));
-            const status2 = audioRecorder.getStatus();
-            if (status2.durationMillis && status2.durationMillis > 0) {
-              actualDurationMs = status2.durationMillis;
-            }
-          } catch {}
-
-          // Fallback: estimate duration from file size and configured bit rate (128 kbps)
-          if (!actualDurationMs || actualDurationMs <= 0) {
-            try {
-              const head = await fetch(audioRecorder.uri as string, { method: 'HEAD' });
-              const len = head.headers.get('content-length');
-              if (len) {
-                const bytes = parseInt(len, 10);
-                const bitRate = 128000; // bits per second (from recorder setup)
-                const seconds = (bytes * 8) / bitRate;
-                actualDurationMs = Math.max(0, Math.round(seconds * 1000));
-              }
-            } catch {}
-          }
-
-          // Update memo UI duration
-          const formattedDuration = formatDuration(actualDurationMs || 0);
-          setMemos(prev => prev.map(memo => 
-            memo.id === '1' 
-              ? { ...memo, duration: formattedDuration }
-              : memo
-          ));
-
-          // Build dynamic title like AUG-20-2025_1
-          const prefix = getTodayTitlePrefix();
-          const nextIdx = getNextDailyIndex(prefix);
-          const generatedTitle = `${prefix}_${nextIdx}`;
-
-          // Proceed with upload using JSON path so we can include computed duration explicitly
-          const uploadResult = await recordingService.uploadRecordingAsJSON(audioRecorder, {
-            title: generatedTitle,
-            jobNumber: 'CFX 417-151', // TODO: source from context
-            type: 'Voice Memo',
-            transcription: liveTranscription || undefined,
-            durationOverrideMs: actualDurationMs,
-          }, token || undefined);
-
-          if (uploadResult.success) {
-            Alert.alert('Success', 'Recording uploaded successfully!');
-            // Add/update the new recording in the records list with accurate duration
-            const newRecord = {
-              id: uploadResult.recordingId || `rec_${Date.now()}`,
-              title: generatedTitle,
-              duration: formattedDuration,
-              date: new Date().toLocaleString(),
-              jobNumber: 'CFX 417-151', // TODO: from context
-              type: 'Voice Memo'
-            };
-            setRecordsList(prev => [newRecord, ...prev]);
-          } else {
-            Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload recording');
-          }
-          
-          setIsUploading(false);
-          setUploadProgress(0);
-        } else {
-          console.log('No recording URI available');
-          Alert.alert('Recording Error', 'No recording was saved. Please try again.');
-        }
-        
-        setIsRecording(false);
-
-        recordButtonOpacity.value = withTiming(1);
-        recordButtonScale.value = withTiming(1);
-      } catch (error) {
-        console.error('Failed to stop recording:', error);
-        Alert.alert('Recording Error', 'Failed to stop recording properly.');
-        setIsRecording(false);
-        setIsUploading(false);
-        setUploadProgress(0);
-      }
+      recordButtonOpacity.value = withRepeat(
+        withTiming(0.8, { duration: 1000 }),
+        -1,
+        true
+      );
+      recordButtonScale.value = withRepeat(
+        withTiming(1.1, { duration: 1000 }),
+        -1,
+        true
+      );
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      Alert.alert('Recording Error', 'Failed to start recording. Please check your permissions.');
     }
   };
+
+  const handleStopRecording = async () => {
+    if (!isRecording) return; // Not recording
+    
+    try {
+      await audioRecorder.stop();
+      const status = audioRecorder.getStatus();
+      
+      // Immediately set saving state and stop recording state
+      setIsRecording(false);
+      setIsSaving(true);
+      
+      // Reset button animations immediately
+      recordButtonOpacity.value = withTiming(1);
+      recordButtonScale.value = withTiming(1);
+      
+      console.log('Recording stopped');
+      console.log('Recording status:', status);
+      console.log('Recording URI:', audioRecorder.uri);
+      
+      if (audioRecorder.uri) {
+        // Try to read duration again after a short delay (recorder may not flush immediately)
+        let actualDurationMs = status.durationMillis || 0;
+        try {
+          await new Promise(res => setTimeout(res, 200));
+          const status2 = audioRecorder.getStatus();
+          if (status2.durationMillis && status2.durationMillis > 0) {
+            actualDurationMs = status2.durationMillis;
+          }
+        } catch {}
+
+        // Fallback: estimate duration from file size and configured bit rate (128 kbps)
+        if (!actualDurationMs || actualDurationMs <= 0) {
+          try {
+            const head = await fetch(audioRecorder.uri as string, { method: 'HEAD' });
+            const len = head.headers.get('content-length');
+            if (len) {
+              const bytes = parseInt(len, 10);
+              const bitRate = 128000; // bits per second (from recorder setup)
+              const seconds = (bytes * 8) / bitRate;
+              actualDurationMs = Math.max(0, Math.round(seconds * 1000));
+            }
+          } catch {}
+        }
+
+        // Update memo UI duration
+        const formattedDuration = formatDuration(actualDurationMs || 0);
+        setMemos(prev => prev.map(memo => 
+          memo.id === '1' 
+            ? { ...memo, duration: formattedDuration }
+            : memo
+        ));
+
+        // Build dynamic title like AUG-20-2025_1
+        const prefix = getTodayTitlePrefix();
+        const nextIdx = getNextDailyIndex(prefix);
+        const generatedTitle = `${prefix}_${nextIdx}`;
+
+        // Proceed with upload using JSON path so we can include computed duration explicitly
+        const uploadResult = await recordingService.uploadRecordingAsJSON(audioRecorder, {
+          title: generatedTitle,
+          jobNumber: 'CFX 417-151', // TODO: source from context
+          type: 'Voice Memo',
+          transcription: liveTranscription || undefined,
+          durationOverrideMs: actualDurationMs,
+        }, token || undefined);
+
+        if (uploadResult.success) {
+          // Add/update the new recording in the records list with accurate duration
+          const newRecord = {
+            id: uploadResult.recordingId || `rec_${Date.now()}`,
+            title: generatedTitle,
+            duration: formattedDuration,
+            date: new Date().toLocaleString(),
+            jobNumber: 'CFX 417-151', // TODO: from context
+            type: 'Voice Memo'
+          };
+          setRecordsList(prev => [newRecord, ...prev]);
+          
+          // Reset saving state and trigger success callback
+          setIsSaving(false);
+          if (options?.onUploadSuccess) {
+            options.onUploadSuccess('🎉 Recording uploaded successfully!');
+          }
+        } else {
+          setIsSaving(false);
+          Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload recording');
+        }
+        
+        setIsUploading(false);
+        setUploadProgress(0);
+      } else {
+        console.log('No recording URI available');
+        setIsSaving(false);
+        Alert.alert('Recording Error', 'No recording was saved. Please try again.');
+      }
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      Alert.alert('Recording Error', 'Failed to stop recording properly.');
+      setIsRecording(false);
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  // Legacy function for backward compatibility (now calls start recording)
+  const handleRecordPress = handleStartRecording;
 
   // Upload recording function
   const uploadRecording = async (recordingToUpload: AudioRecorder) => {
@@ -512,7 +532,7 @@ export const useVoiceMemos = () => {
     requestPermissions();
   }, []);
 
-  // Animate title change when currentIndex or recording state changes
+  // Animate title change when currentIndex, recording, or saving state changes
   useEffect(() => {
     titleOpacity.value = withTiming(0, {
       duration: 150,
@@ -529,7 +549,7 @@ export const useVoiceMemos = () => {
         duration: 300,
       });
     });
-  }, [currentIndex, isRecording, titleOpacity, titleTranslateY]);
+  }, [currentIndex, isRecording, isSaving, titleOpacity, titleTranslateY]);
 
   // Initialize circle positions on mount
   useEffect(() => {
@@ -606,6 +626,7 @@ export const useVoiceMemos = () => {
   return {
     // State
     isRecording,
+    isSaving,
     currentIndex,
     liveTranscription,
     recorder: audioRecorder, // Use audioRecorder instead of the old recorder state
@@ -652,7 +673,9 @@ export const useVoiceMemos = () => {
     handleCloseRecords,
     handleRecordClick,
     handleCloseRecordDetail,
-    handleRecordPress,
+    handleRecordPress, // Legacy - now same as handleStartRecording
+    handleStartRecording,
+    handleStopRecording,
     handlePlayPress,
     handleSearchPress,
     handleCloseSearch,

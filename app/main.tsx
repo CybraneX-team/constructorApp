@@ -20,14 +20,17 @@ import RecordDetailView from '../components/RecordDetailView';
 import RecordsList from '../components/RecordsList';
 import SearchOverlay from '../components/SearchOverlay';
 import { UploadStatus } from '../components/UploadStatus';
+import { ToastMessage } from '../components/ToastMessage';
 import { useVoiceMemos } from '../hooks/useVoiceMemos';
 import * as ImagePicker from 'expo-image-picker';
 import MediaOptionsModal from '../components/MediaOptionsModal';
 import DescriptionPrompt from '../components/DescriptionPrompt';
+import { useModalStack } from '../contexts/ModalStackContext';
 
 const VoiceMemosScreen = () => {
   const {
     isRecording,
+    isSaving,
     currentIndex,
     liveTranscription,
     showRecordsList,
@@ -62,13 +65,18 @@ const VoiceMemosScreen = () => {
     handleCloseRecords,
     handleRecordClick,
     handleCloseRecordDetail,
-    handleRecordPress,
+    handleRecordPress, // Legacy handler
+    handleStartRecording,
+    handleStopRecording,
     handlePlayPress,
     handleSearchPress,
     handleCloseSearch,
-  } = useVoiceMemos();
+  } = useVoiceMemos({ 
+    onUploadSuccess: (message: string) => showSuccessToastMessage(message) 
+  });
 
   const currentTitle = React.useMemo(() => getCurrentTitle(), [getCurrentTitle]);
+  const { registerModal, unregisterModal } = useModalStack();
 
   useEffect(() => {
     console.log(Dimensions.get('window'));
@@ -78,6 +86,15 @@ const VoiceMemosScreen = () => {
   const [showMediaOptions, setShowMediaOptions] = useState(false);
   const [showDescriptionPrompt, setShowDescriptionPrompt] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  
+  // Toast state
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'info' | 'success' | 'error' | 'warning'>('info');
+  
+  // Success toast state
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const requestPermissions = async () => {
     try {
@@ -216,6 +233,77 @@ const VoiceMemosScreen = () => {
     setTimeout(() => setShowDescriptionPrompt(true), 150);
   };
 
+  // Show toast message
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+  };
+
+  // Hide toast message
+  const hideToast = () => {
+    setShowToast(false);
+  };
+
+  // Show success toast
+  const showSuccessToastMessage = (message: string) => {
+    setSuccessMessage(message);
+    setShowSuccessToast(true);
+  };
+
+  // Hide success toast
+  const hideSuccessToast = () => {
+    setShowSuccessToast(false);
+  };
+
+  // Note: Success notifications are now handled directly in the recording process
+  // We could add a callback prop to useVoiceMemos if needed for custom notifications
+
+  // Register modals with the modal stack for proper back button handling
+  useEffect(() => {
+    const id = 'records-list';
+    if (showRecordsList) {
+      registerModal(id, handleCloseRecords, 80);
+    } else {
+      unregisterModal(id);
+    }
+  }, [showRecordsList]);
+
+  useEffect(() => {
+    const id = 'record-detail';
+    if (showRecordDetail) {
+      registerModal(id, handleCloseRecordDetail, 100);
+    } else {
+      unregisterModal(id);
+    }
+  }, [showRecordDetail]);
+
+  useEffect(() => {
+    const id = 'search-overlay';
+    if (showSearchOverlay) {
+      registerModal(id, handleCloseSearch, 90);
+    } else {
+      unregisterModal(id);
+    }
+  }, [showSearchOverlay]);
+
+  useEffect(() => {
+    const id = 'media-options';
+    if (showMediaOptions) {
+      registerModal(id, handleCloseMediaOptions, 60);
+    } else {
+      unregisterModal(id);
+    }
+  }, [showMediaOptions]);
+
+  useEffect(() => {
+    const id = 'description-prompt';
+    if (showDescriptionPrompt) {
+      registerModal(id, () => setShowDescriptionPrompt(false), 70);
+    } else {
+      unregisterModal(id);
+    }
+  }, [showDescriptionPrompt]);
+
   const handleMoveToSearchCircle = () => {
     // "Search Records" is index 2 in initial memos
     if (currentIndex !== 2) handleCircleClick(2);
@@ -252,6 +340,7 @@ const VoiceMemosScreen = () => {
                       circleOpacities={circleOpacities}
                       visualizerBars={visualizerBars}
                       isRecording={isRecording}
+                      isSaving={isSaving}
                       liveTranscription={liveTranscription}
                       recordsButtonScale={recordsButtonScale}
                       handleAccessRecords={handleAccessRecords}
@@ -266,7 +355,9 @@ const VoiceMemosScreen = () => {
           </SafeAreaView>
 
           <RecordButton
-            onPress={handleRecordPress}
+            onPress={() => showToastMessage('🎙️ Hold to record!')}
+            onPressIn={handleStartRecording}
+            onPressOut={handleStopRecording}
             recordButtonScale={recordButtonScale}
             recordButtonOpacity={recordButtonOpacity}
             onSearchPress={handleSearchPress}
@@ -323,6 +414,25 @@ const VoiceMemosScreen = () => {
             isUploading={isUploading}
             progress={uploadProgress}
             isVisible={isUploading}
+          />
+
+          {/* Toast Messages */}
+          <ToastMessage
+            message={toastMessage}
+            isVisible={showToast}
+            onHide={hideToast}
+            duration={1500}
+            position="above-record-button"
+          />
+          
+          {/* Success Toast */}
+          <ToastMessage
+            message={successMessage}
+            isVisible={showSuccessToast}
+            onHide={hideSuccessToast}
+            duration={3000}
+            position="center"
+            type="success"
           />
         </View>
       </GestureHandlerRootView>

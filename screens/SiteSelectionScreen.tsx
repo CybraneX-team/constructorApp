@@ -23,6 +23,7 @@ import { useSite, Site } from '../contexts/SiteContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import axiosInstance from '../utils/axiosConfig';
+import { useModalStack } from '../contexts/ModalStackContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -39,6 +40,7 @@ const SiteSelectionScreen: React.FC = () => {
 
   const { user, logout } = useAuth();
   const { sites, setSites, setSelectedSite, addSite, isLoading: isLoadingSites } = useSite();
+  const { registerModal, unregisterModal } = useModalStack();
 
   // Animation values
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -54,6 +56,16 @@ const SiteSelectionScreen: React.FC = () => {
   useEffect(() => {
     loadActiveSites();
   }, []);
+
+  // Register modal with the modal stack for proper back button handling
+  useEffect(() => {
+    const id = 'site-creation-modal';
+    if (showCreateForm) {
+      registerModal(id, closeCreateForm, 50);
+    } else {
+      unregisterModal(id);
+    }
+  }, [showCreateForm]);
 
   const loadActiveSites = async () => {
     try {
@@ -194,7 +206,7 @@ const SiteSelectionScreen: React.FC = () => {
           <Text style={styles.siteId}>ID: {item.siteId}</Text>
           <Text style={styles.companyName}>{item.companyName}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={24} color={Colors.light.icon + '60'} />
+        <Ionicons name="chevron-forward" size={24} color={'black'} />
       </View>
       <View style={styles.stakeholdersList}>
         <Text style={styles.stakeholdersLabel}>Stakeholders:</Text>
@@ -279,7 +291,7 @@ const SiteSelectionScreen: React.FC = () => {
               />
             ) : (
               <View style={styles.emptySites}>
-                <Ionicons name="business-outline" size={64} color={Colors.light.icon + '40'} />
+                <Ionicons name="business-outline" size={64} color={'black'} />
                 <Text style={styles.emptyText}>No active sites found</Text>
                 <Text style={styles.emptySubtext}>Create your first site to get started</Text>
               </View>
@@ -331,7 +343,7 @@ const SiteSelectionScreen: React.FC = () => {
                   style={styles.closeButton}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="close" size={24} color={Colors.light.icon} />
+                  <Ionicons name="close" size={24} color={'black'} />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>Create New Site</Text>
                 <Text style={styles.modalSubtitle}>Fill in the details below</Text>
@@ -343,11 +355,11 @@ const SiteSelectionScreen: React.FC = () => {
                   styles.inputWrapper,
                   focusedInput === 'siteName' && styles.focusedInput
                 ]}>
-                  <Ionicons name="business-outline" size={22} color={Colors.light.icon} style={styles.inputIcon} />
+                  <Ionicons name="business-outline" size={22} color={'black'} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Site Name"
-                    placeholderTextColor={Colors.light.icon + '80'}
+                    placeholderTextColor={'#D3D3D3'}
                     value={siteName}
                     onChangeText={setSiteName}
                     autoCapitalize="words"
@@ -362,11 +374,11 @@ const SiteSelectionScreen: React.FC = () => {
                   styles.inputWrapper,
                   focusedInput === 'siteId' && styles.focusedInput
                 ]}>
-                  <Ionicons name="barcode-outline" size={22} color={Colors.light.icon} style={styles.inputIcon} />
+                  <Ionicons name="barcode-outline" size={22} color={'black'} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Site ID"
-                    placeholderTextColor={Colors.light.icon + '80'}
+                    placeholderTextColor={'#D3D3D3'}
                     value={siteId}
                     onChangeText={setSiteId}
                     autoCapitalize="characters"
@@ -381,11 +393,11 @@ const SiteSelectionScreen: React.FC = () => {
                   styles.inputWrapper,
                   focusedInput === 'companyName' && styles.focusedInput
                 ]}>
-                  <Ionicons name="briefcase-outline" size={22} color={Colors.light.icon} style={styles.inputIcon} />
+                  <Ionicons name="briefcase-outline" size={22} color={'black'} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Company Name"
-                    placeholderTextColor={Colors.light.icon + '80'}
+                    placeholderTextColor={'#D3D3D3'}
                     value={companyName}
                     onChangeText={setCompanyName}
                     autoCapitalize="words"
@@ -401,11 +413,11 @@ const SiteSelectionScreen: React.FC = () => {
                   styles.textareaWrapper,
                   focusedInput === 'stakeholders' && styles.focusedInput
                 ]}>
-                  <Ionicons name="people-outline" size={22} color={Colors.light.icon} style={styles.inputIcon} />
+                  <Ionicons name="people-outline" size={22} color={'black'} style={styles.inputIcon} />
                   <TextInput
                     style={[styles.input, styles.textarea]}
                     placeholder="Stakeholder emails (comma-separated)&#10;e.g. john@company.com, sarah@company.com"
-                    placeholderTextColor={Colors.light.icon + '80'}
+                    placeholderTextColor={'#D3D3D3'}
                     value={stakeholdersText}
                     onChangeText={setStakeholdersText}
                     multiline={true}
@@ -833,7 +845,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#64748b',
+    color: '#000',
   },
   submitButton: {
     flex: 1,

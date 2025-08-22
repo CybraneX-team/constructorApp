@@ -9,7 +9,9 @@ import { router } from 'expo-router';
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
 interface RecordButtonProps {
-  onPress: () => void;
+  onPress: () => void; // Legacy support - not used for hold-to-record
+  onPressIn?: () => void; // Start recording when pressed
+  onPressOut?: () => void; // Stop recording when released
   recordButtonScale: Animated.SharedValue<number>;
   recordButtonOpacity: Animated.SharedValue<number>;
   onSearchPress?: () => void;
@@ -19,6 +21,8 @@ interface RecordButtonProps {
 
 export const RecordButton: React.FC<RecordButtonProps> = ({
   onPress,
+  onPressIn,
+  onPressOut,
   recordButtonScale,
   recordButtonOpacity,
   onSearchPress,
@@ -26,6 +30,8 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   onCameraPress,
 }) => {
   const { logout } = useAuth();
+  const [isRecordingStarted, setIsRecordingStarted] = React.useState(false);
+  const holdTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const recordButtonAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -49,6 +55,56 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
     onSearchPress?.();
   };
 
+  const handlePressIn = () => {
+    console.log('🔴 Press In - Setting timeout');
+    
+    // Clean up any existing timeout first (edge case handling)
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+    
+    // Start recording after a short delay to distinguish from tap
+    holdTimeoutRef.current = setTimeout(() => {
+      console.log('⏰ Timeout fired - Starting recording');
+      setIsRecordingStarted(true);
+      holdTimeoutRef.current = null; // Clear the timeout reference
+      onPressIn?.();
+    }, 300); // 300ms hold threshold
+  };
+
+  const handlePressOut = () => {
+    console.log('🟢 Press Out - Recording started?', isRecordingStarted);
+    console.log('🟢 Press Out - Timeout exists?', !!holdTimeoutRef.current);
+    
+    if (holdTimeoutRef.current) {
+      // Timeout hasn't fired yet - this was a quick tap
+      console.log('⚡ Quick tap - Clearing timeout and showing toast');
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+      // Only show toast if recording hasn't started
+      if (!isRecordingStarted) {
+        onPress(); // Show toast
+      }
+    }
+    
+    // Always stop recording if it's started, regardless of timeout state
+    if (isRecordingStarted) {
+      console.log('⏹️ Hold completed - Stopping recording');
+      setIsRecordingStarted(false);
+      onPressOut?.();
+    }
+  };
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (holdTimeoutRef.current) {
+        clearTimeout(holdTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <View style={styles.recordSection}>
       {/* Logout Button */}
@@ -67,11 +123,13 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
       <View style={styles.recordButtonWrapper}>
         <AudioVisualizer />
         <AnimatedTouchableOpacity
-          onPress={onPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
           style={[
             styles.recordButton,
             recordButtonAnimatedStyle,
           ]}
+          activeOpacity={0.9}
         >
           <View style={styles.recordButtonInner} />
         </AnimatedTouchableOpacity>

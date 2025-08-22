@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { AuthProvider } from '../contexts/AuthContext';
 import { SiteProvider } from '../contexts/SiteContext';
+import { ModalStackProvider } from '../contexts/ModalStackContext';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -23,7 +24,8 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <SiteProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <ModalStackProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="main" options={{ headerShown: false }} />
@@ -33,7 +35,8 @@ export default function RootLayout() {
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar style="auto" />
-        </ThemeProvider>
+          </ThemeProvider>
+        </ModalStackProvider>
       </SiteProvider>
     </AuthProvider>
   );

@@ -1,22 +1,105 @@
 import { shareAsync } from 'expo-sharing';
 import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 import { RecordDetail } from '../components/types';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 
-export const generatePDFFromRecord = async (record: RecordDetail): Promise<void> => {
+// Generate and share PDF
+export const generateAndSharePDF = async (record: RecordDetail): Promise<void> => {
   try {
     const htmlContent = buildDailyWorkSummaryHtml(record);
-
     const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
     if (uri) {
-      await shareAsync(uri);
+      await shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Share Daily Work Summary',
+      });
     }
   } catch (error) {
-    console.error('Error generating PDF:', error);
+    console.error('Error generating and sharing PDF:', error);
     throw error;
   }
 };
+
+// Generate and download PDF to device
+export const generateAndDownloadPDF = async (record: RecordDetail): Promise<void> => {
+  try {
+    const htmlContent = buildDailyWorkSummaryHtml(record);
+    const { uri } = await Print.printToFileAsync({ html: htmlContent });
+
+    if (!uri) {
+      throw new Error('Failed to generate PDF');
+    }
+
+    // Generate a filename with date and job number
+    const sanitizedJobNumber = (record.jobNumber || 'Unknown').replace(/[^a-zA-Z0-9]/g, '_');
+    const sanitizedDate = (record.date || new Date().toISOString().split('T')[0]).replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `DailyWorkSummary_${sanitizedJobNumber}_${sanitizedDate}.pdf`;
+
+    if (Platform.OS === 'android') {
+      // On Android, try to save using MediaLibrary with proper error handling
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Permission Required',
+            'Please enable media library access to download PDFs to your device.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        // Save the original PDF file to the device's Downloads
+        await MediaLibrary.saveToLibraryAsync(uri);
+        
+        Alert.alert(
+          'PDF Downloaded', 
+          `Daily Work Summary has been saved to your Downloads folder.\n\nFile: ${filename}`,
+          [{ text: 'OK' }]
+        );
+      } catch (error) {
+        console.error('Android MediaLibrary save failed:', error);
+        // Fallback: copy to app documents directory
+        await saveToAppDocuments(uri, filename);
+      }
+    } else {
+      // On iOS, save to app documents directory and show success message
+      await saveToAppDocuments(uri, filename);
+    }
+  } catch (error) {
+    console.error('Error generating and downloading PDF:', error);
+    throw error;
+  }
+};
+
+// Helper function to save to app's documents directory
+const saveToAppDocuments = async (sourceUri: string, filename: string): Promise<void> => {
+  try {
+    const documentsDirectory = FileSystem.documentDirectory;
+    if (!documentsDirectory) {
+      throw new Error('Documents directory not available');
+    }
+    
+    const downloadPath = documentsDirectory + filename;
+    await FileSystem.copyAsync({ from: sourceUri, to: downloadPath });
+    
+    Alert.alert(
+      'PDF Downloaded', 
+      Platform.OS === 'ios'
+        ? `Daily Work Summary has been saved to the app's Documents folder.\n\nFile: ${filename}\n\nYou can access it through the Files app.`
+        : `Daily Work Summary has been saved locally.\n\nFile: ${filename}`,
+      [{ text: 'OK' }]
+    );
+  } catch (error) {
+    console.error('App documents save failed:', error);
+    throw new Error('Failed to save PDF to device');
+  }
+};
+
+// Legacy function for backward compatibility
+export const generatePDFFromRecord = generateAndSharePDF;
 
 function buildDailyWorkSummaryHtml(record: RecordDetail): string {
   return `

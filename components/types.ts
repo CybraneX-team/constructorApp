@@ -66,10 +66,11 @@ export interface CircularProgressProps {
   circleOpacities: Animated.SharedValue<number>[];
   visualizerBars: Animated.SharedValue<number>[];
   isRecording: boolean;
+  isSaving: boolean;
   liveTranscription: string;
   recordsButtonScale: Animated.SharedValue<number>;
   handleAccessRecords: () => void;
   handlePlayPress: (memoId: string) => void;
   handleCircleClick: (newIndex: number) => void;
   handleSearchPress?: () => void;
-} 
+}

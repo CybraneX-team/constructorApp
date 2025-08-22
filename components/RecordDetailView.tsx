@@ -15,9 +15,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { RecordDetailViewProps } from './types';
-import { generatePDFFromRecord } from '../utils/pdfGenerator';
+import { generateAndSharePDF, generateAndDownloadPDF } from '../utils/pdfGenerator';
 import { useAuth } from '../contexts/AuthContext';
 import { recordingService } from '../services/recordingService';
+import { Ionicons } from '@expo/vector-icons';
 
 const screenWidth = Dimensions.get('window').width;
 const isSmallScreen = screenWidth < 360;
@@ -53,15 +54,11 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
 
   return (
     <View>
-      {/* Labor Section */}
-      <Animated.View style={[styles.detailSection, laborSectionStyle]}>
-        <Text style={styles.sectionTitle}>LABOR</Text>
-        <View style={styles.cardsContainer}>
-          <LaborCard title="Manager" data={record.laborData.manager} color="#000" />
-          <LaborCard title="Foreman" data={record.laborData.foreman} color="#000" />
-          <LaborCard title="Carpenter" data={record.laborData.carpenter} color="#000" />
-          <LaborCard title="Skill Laborer" data={record.laborData.skillLaborer} color="#000" />
-          <LaborCard title="Carpenter (Extra)" data={record.laborData.carpenterExtra} color="#000" />
+      {/* Daily Activities Section */}
+      <Animated.View style={[styles.detailSection, activitiesSectionStyle]}>
+        <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
+        <View style={styles.activitiesCard}>
+          <Text style={styles.activitiesText}>{record.dailyActivities}</Text>
         </View>
       </Animated.View>
 
@@ -75,13 +72,21 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
         />
       </Animated.View>
 
-      {/* Daily Activities Section */}
-      <Animated.View style={[styles.detailSection, activitiesSectionStyle]}>
-        <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
-        <View style={styles.activitiesCard}>
-          <Text style={styles.activitiesText}>{record.dailyActivities}</Text>
+      {/* Labor Section */}
+      <Animated.View style={[styles.detailSection, laborSectionStyle]}>
+        <Text style={styles.sectionTitle}>LABOR</Text>
+        <View style={styles.cardsContainer}>
+          <LaborCard title="Manager" data={record.laborData.manager} color="#000" />
+          <LaborCard title="Foreman" data={record.laborData.foreman} color="#000" />
+          <LaborCard title="Carpenter" data={record.laborData.carpenter} color="#000" />
+          <LaborCard title="Skill Laborer" data={record.laborData.skillLaborer} color="#000" />
+          <LaborCard title="Carpenter (Extra)" data={record.laborData.carpenterExtra} color="#000" />
         </View>
       </Animated.View>
+
+      
+
+      
 
       {/* Materials Deliveries Section */}
       <Animated.View style={[styles.detailSection, materialsSectionStyle]}>
@@ -325,6 +330,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   backdropOpacity 
 }) => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   const [resolvedRecord, setResolvedRecord] = useState(record);
   const { token } = useAuth();
 
@@ -356,15 +362,27 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
     opacity: detailOpacity.value,
   }));
 
-  const handleDownloadPDF = async () => {
+  const handleSharePDF = async () => {
     try {
       setIsGeneratingPDF(true);
-      await generatePDFFromRecord(resolvedRecord);
+      await generateAndSharePDF(resolvedRecord);
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      Alert.alert('Error', 'Failed to generate PDF. Please try again.', [{ text: 'OK' }]);
+      console.error('Error sharing PDF:', error);
+      Alert.alert('Error', 'Failed to share PDF. Please try again.', [{ text: 'OK' }]);
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    try {
+      setIsDownloadingPDF(true);
+      await generateAndDownloadPDF(resolvedRecord);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      Alert.alert('Error', 'Failed to download PDF. Please try again.', [{ text: 'OK' }]);
+    } finally {
+      setIsDownloadingPDF(false);
     }
   };
 
@@ -380,16 +398,32 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
             <Text style={styles.recordDetailJob}>Job: {resolvedRecord.jobNumber}</Text>
           </View>
           <View style={styles.headerRightSection}>
-            <TouchableOpacity onPress={handleDownloadPDF} style={styles.downloadButton} disabled={isGeneratingPDF}>
+            {/* Share PDF Button */}
+            <TouchableOpacity 
+              onPress={handleSharePDF} 
+              style={styles.shareButton} 
+              disabled={isGeneratingPDF || isDownloadingPDF}
+            >
               {isGeneratingPDF ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <>
-                  <Text style={styles.downloadIcon}>↓</Text>
-                  <Text style={styles.downloadText}>PDF</Text>
-                </>
+                <Ionicons name="share-social-outline" size={18} color="#fff" />
               )}
             </TouchableOpacity>
+            
+            {/* Download PDF Button */}
+            <TouchableOpacity 
+              onPress={handleDownloadPDF} 
+              style={styles.downloadButton} 
+              disabled={isGeneratingPDF || isDownloadingPDF}
+            >
+              {isDownloadingPDF ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="cloud-download-outline" size={18} color="#fff" />
+              )}
+            </TouchableOpacity>
+            
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <View style={styles.closeButtonInner}>
                 <Text style={styles.closeButtonText}>✕</Text>
@@ -536,13 +570,13 @@ const styles = StyleSheet.create({
   headerRightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
-  downloadButton: {
-    backgroundColor: '#007AFF',
+  shareButton: {
+    backgroundColor: '#34C759',
     borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -551,7 +585,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
-    minWidth: 60,
+    width: 38,
+    height: 38,
+  },
+  downloadButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 20,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+    width: 38,
+    height: 38,
   },
   downloadIcon: {
     fontSize: 16,
@@ -570,9 +621,9 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   closeButtonInner: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 50,
     backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',

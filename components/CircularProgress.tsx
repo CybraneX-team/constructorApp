@@ -72,6 +72,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   circleOpacities,
   visualizerBars,
   isRecording,
+  isSaving,
   liveTranscription,
   recordsButtonScale,
   handleAccessRecords,
@@ -218,6 +219,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
               // Change content based on recording state with smooth transition
               <WorkProgressTransition
                 isRecording={isRecording}
+                isSaving={isSaving}
                 liveTranscription={liveTranscription}
                 sizes={sizes}
               />
@@ -238,7 +240,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
                     onPress={handleAccessRecords}
                     style={[styles.accessRecordsButton, {
                       width: Math.min(sizes.centerContentSize * 0.9, 140),
-                      height: Math.min(sizes.centerContentSize * 0.25, 40),
+                      height: Math.min(sizes.centerContentSize * 0.3, 45),
                     }]}
                     activeOpacity={0.8}
                   >
@@ -519,7 +521,7 @@ const styles = StyleSheet.create({
   },
   accessRecordsButton: {
     backgroundColor: '#1C1C1E',
-    borderRadius: 16,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -546,7 +548,7 @@ const styles = StyleSheet.create({
   },
   searchButton: {
     backgroundColor: '#1C1C1E',
-    borderRadius: 16,
+    borderRadius: 28,
     marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -574,17 +576,20 @@ const styles = StyleSheet.create({
 // Work Progress Transition Component
 interface WorkProgressTransitionProps {
   isRecording: boolean;
+  isSaving: boolean;
   liveTranscription: string;
   sizes: any;
 }
 
 const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
   isRecording,
+  isSaving,
   liveTranscription,
   sizes,
 }) => {
   const workProgressOpacity = useSharedValue(1);
   const transcriptionOpacity = useSharedValue(0);
+  const savingOpacity = useSharedValue(0);
   const infoButtonOpacity = useSharedValue(1);
   
   // Sample work progress data
@@ -602,17 +607,25 @@ const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
 
   React.useEffect(() => {
     if (isRecording) {
-      // Fade out work progress and info button, fade in transcription
+      // Recording state: show transcription
       workProgressOpacity.value = withTiming(0, { duration: 300 });
+      savingOpacity.value = withTiming(0, { duration: 300 });
       transcriptionOpacity.value = withTiming(1, { duration: 300 });
       infoButtonOpacity.value = withTiming(0, { duration: 200 });
+    } else if (isSaving) {
+      // Saving state: hide work progress details and show only saving text
+      workProgressOpacity.value = withTiming(0, { duration: 150 });
+      transcriptionOpacity.value = withTiming(0, { duration: 150 });
+      savingOpacity.value = withTiming(1, { duration: 150 });
+      infoButtonOpacity.value = withTiming(0, { duration: 150 });
     } else {
-      // Fade out transcription, fade in work progress and info button
+      // Normal state: show work progress
       transcriptionOpacity.value = withTiming(0, { duration: 300 });
+      savingOpacity.value = withTiming(0, { duration: 300 });
       workProgressOpacity.value = withTiming(1, { duration: 300 });
       infoButtonOpacity.value = withTiming(1, { duration: 400 });
     }
-  }, [isRecording]);
+  }, [isRecording, isSaving]);
 
   const workProgressStyle = useAnimatedStyle(() => ({
     opacity: workProgressOpacity.value,
@@ -630,6 +643,18 @@ const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
     height: '100%',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+  }));
+
+  const savingStyle = useAnimatedStyle(() => ({
+    opacity: savingOpacity.value,
+    position: 'absolute' as const,
+    width: '100%',
+    height: '100%',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    zIndex: 1000,
   }));
 
   const infoButtonStyle = useAnimatedStyle(() => ({
@@ -712,9 +737,17 @@ return (
         </TouchableOpacity>
       </Animated.View>
 
+      {/* Saving View */}
+      <Animated.View style={savingStyle}>
+        <View style={savingStyles.container}>
+          <Text style={[savingStyles.savingText, { fontSize: sizes.fontSize.title + 4 }]}>
+            SAVING...
+          </Text>
+        </View>
+      </Animated.View>
 
       {/* Live Transcription View */}
-      <Animated.View style={transcriptionStyle}>
+      {/* <Animated.View style={transcriptionStyle}>
         <View style={styles.transcriptionContainer}>
           <Text style={[styles.transcriptionLabel, { fontSize: sizes.fontSize.button }]}>
             Live Transcription
@@ -723,7 +756,7 @@ return (
             {liveTranscription || 'Start recording to see live transcription...'}
           </Text>
         </View>
-      </Animated.View>
+      </Animated.View> */}
     </View>
   );
 };
@@ -1293,6 +1326,23 @@ const modalStyles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+});
+
+// Saving Styles
+const savingStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+    paddingHorizontal: 20,
+  },
+  savingText: {
+    fontWeight: '800',
+    color: '#000',
+    textAlign: 'center',
+    letterSpacing: -0.3,
   },
 });
 
