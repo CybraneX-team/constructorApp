@@ -73,4 +73,5 @@ export interface CircularProgressProps {
   handlePlayPress: (memoId: string) => void;
   handleCircleClick: (newIndex: number) => void;
   handleSearchPress?: () => void;
+  onShowWorkProgressModal?: () => void;
 }

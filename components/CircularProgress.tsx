@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,19 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
-  Alert,
 } from 'react-native';
 import Animated, {
-  useAnimatedStyle,
-  interpolate,
-  Extrapolate,
   useSharedValue,
+  useAnimatedStyle,
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
+import { MaterialIcons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { CircularProgressProps } from './types';
+import { useAnimatedProps } from 'react-native-reanimated';
 import { AudioVisualizerBorder } from './AudioVisualizer';
+import { ProcessedJobProgress } from '../services/jobProgressService';
 
 // Get screen dimensions for responsive design
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -79,6 +78,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   handlePlayPress,
   handleCircleClick,
   handleSearchPress,
+  onShowWorkProgressModal,
 }) => {
   const sizes = getResponsiveSizes();
   const size = isMain ? sizes.mainSize : sizes.baseSize;
@@ -222,6 +222,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
                 isSaving={isSaving}
                 liveTranscription={liveTranscription}
                 sizes={sizes}
+                onShowWorkProgressModal={onShowWorkProgressModal}
               />
             ) : index === 1 ? (
               // Access Records button for Record Book circle
@@ -579,6 +580,7 @@ interface WorkProgressTransitionProps {
   isSaving: boolean;
   liveTranscription: string;
   sizes: any;
+  onShowWorkProgressModal?: () => void;
 }
 
 const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
@@ -586,23 +588,19 @@ const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
   isSaving,
   liveTranscription,
   sizes,
+  onShowWorkProgressModal,
 }) => {
   const workProgressOpacity = useSharedValue(1);
   const transcriptionOpacity = useSharedValue(0);
   const savingOpacity = useSharedValue(0);
   const infoButtonOpacity = useSharedValue(1);
   
-  // Sample work progress data
+  // Static work progress data (this will be replaced with real-time data from parent)
   const workProgress = {
-    completion: 50,
-    tasksCompleted: 5,
-    totalTasks: 10,
-    remainingTasks: [
-      'Complete foundation inspection',
-      'Install electrical wiring',
-      'Finish drywall installation',
-      'Paint interior walls'
-    ]
+    completion: 0,
+    tasksCompleted: 0,
+    totalTasks: 0,
+    remainingTasks: []
   };
 
   React.useEffect(() => {
@@ -662,17 +660,8 @@ const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
   }));
 
   const showWorkInfoModal = () => {
-    console.log('🔍 Info button pressed - showing work progress details');
-    const remainingTasksText = workProgress.remainingTasks
-      .map((task, index) => `${index + 1}. ${task}`)
-      .join('\n');
-    
-    Alert.alert(
-      'Work Progress Details',
-      `Progress: ${workProgress.completion}%\n\nTasks Completed: ${workProgress.tasksCompleted}/${workProgress.totalTasks}\n\nRemaining Tasks:\n${remainingTasksText}`,
-      [{ text: 'OK', style: 'default' }],
-      { cancelable: true }
-    );
+    console.log('🔍 Info button pressed - calling parent handler');
+    onShowWorkProgressModal?.();
   };
 
 return (
@@ -731,7 +720,6 @@ return (
           ]}
           activeOpacity={0.7}
           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          pointerEvents="auto"
         >
           <MaterialIcons name="info-outline" size={16} color="#FFFFFF" />
         </TouchableOpacity>
@@ -836,10 +824,10 @@ const workProgressStyles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#1C1C1E',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#007AFF',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 4,
@@ -853,7 +841,7 @@ const workProgressStyles = StyleSheet.create({
         borderWidth: 0,
       },
       ios: {
-        shadowColor: '#007AFF',
+        shadowColor: '#000',
         shadowOffset: {
           width: 0,
           height: 6,
@@ -906,26 +894,24 @@ interface ProgressCircleProps {
 }
 
 const ProgressCircle: React.FC<ProgressCircleProps> = ({ completion }) => {
-  const progressValue = useSharedValue(0);
-  const size = 64; // Total size including stroke
-  const strokeWidth = 4;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
+  const [currentProgress, setCurrentProgress] = useState(0);
+  const size = 64;
+  const totalTicks = 60; // Reduced number for better visibility
   
   // Animate progress when completion changes
   useEffect(() => {
-    progressValue.value = withTiming(completion, {
-      duration: 1000,
-    });
+    const timer = setInterval(() => {
+      setCurrentProgress(prev => {
+        if (Math.abs(prev - completion) < 1) {
+          clearInterval(timer);
+          return completion;
+        }
+        return prev + (completion - prev) * 0.1;
+      });
+    }, 16); // 60fps
+    
+    return () => clearInterval(timer);
   }, [completion]);
-  
-  // Use a simpler approach with View-based progress circle
-  const animatedRotation = useAnimatedStyle(() => {
-    const rotation = (progressValue.value / 100) * 360;
-    return {
-      transform: [{ rotate: `${rotation}deg` }],
-    };
-  });
   
   return (
     <View style={{
@@ -941,43 +927,67 @@ const ProgressCircle: React.FC<ProgressCircleProps> = ({ completion }) => {
         width: size,
         height: size,
         borderRadius: size / 2,
-        borderWidth: strokeWidth,
-        borderColor: '#E5E5EA',
         backgroundColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        elevation: 4,
       }} />
       
-      {/* Progress circle overlay */}
+      {/* Tick marks around the circle */}
       <View style={{
         position: 'absolute',
         width: size,
         height: size,
         borderRadius: size / 2,
-        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}>
-        <Animated.View style={[
-          {
-            position: 'absolute',
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: strokeWidth,
-            borderColor: 'transparent',
-            borderTopColor: '#34C759',
-            borderRightColor: completion > 50 ? '#34C759' : 'transparent',
-            borderBottomColor: completion > 50 ? '#34C759' : 'transparent',
-            borderLeftColor: completion > 75 ? '#34C759' : 'transparent',
-          },
-          animatedRotation
-        ]} />
+        {Array.from({ length: totalTicks }).map((_, tickIndex) => {
+          // Calculate position around the circle (start from top)
+          const angle = (tickIndex * (360 / totalTicks)) - 90; // Start from top (12 o'clock)
+          const angleRad = (angle * Math.PI) / 180;
+          const radius = (size / 2) - 6; // Position ticks near the edge
+          const x = radius * Math.cos(angleRad);
+          const y = radius * Math.sin(angleRad);
+          
+          // Determine if this tick should be colored based on progress
+          const tickProgress = (tickIndex / totalTicks) * 100;
+          const isActive = tickProgress <= currentProgress;
+          
+          return (
+            <View
+              key={tickIndex}
+              style={{
+                position: 'absolute',
+                left: (size / 2) + x - 1,
+                top: (size / 2) + y - 3,
+                width: 2,
+                height: 6,
+                backgroundColor: isActive ? '#FF6B6B' : '#E5E5EA',
+                borderRadius: 1,
+                transform: [
+                  { rotate: `${angle + 90}deg` } // Rotate to point outward
+                ],
+              }}
+            />
+          );
+        })}
       </View>
       
       {/* Inner white circle for depth */}
       <View style={{
         position: 'absolute',
-        width: size - (strokeWidth * 2) - 4,
-        height: size - (strokeWidth * 2) - 4,
-        borderRadius: (size - (strokeWidth * 2) - 4) / 2,
+        width: size - 20, // Make inner circle smaller to show the tick marks
+        height: size - 20,
+        borderRadius: (size - 20) / 2,
         backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
         shadowColor: '#000',
         shadowOffset: {
           width: 0,
@@ -986,8 +996,16 @@ const ProgressCircle: React.FC<ProgressCircleProps> = ({ completion }) => {
         shadowOpacity: 0.1,
         shadowRadius: 2,
         elevation: 2,
-        pointerEvents: 'none',
-      }} />
+      }}>
+        {/* Percentage text */}
+        <Text style={{
+          fontSize: 12,
+          fontWeight: '700',
+          color: '#1C1C1E',
+        }}>
+          {Math.round(currentProgress)}%
+        </Text>
+      </View>
     </View>
   );
 };

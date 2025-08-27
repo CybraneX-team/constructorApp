@@ -86,13 +86,22 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
   const fetchRecordings = useCallback(async () => {
     if (!token) return;
     try {
+      console.log('📂 Fetching recordings with token:', token ? 'present' : 'missing');
       const res = await recordingService.getAllRecordings(token);
+      console.log('📂 API response:', res);
+      
       if (res.success) {
         const mapped = (res.recordings || []).map(mapBackendRecordingToListItem);
+        console.log('📂 Mapped recordings:', mapped);
+        console.log('📂 Records count:', mapped.length);
         setRecordsList(mapped);
+      } else {
+        console.error('📂 Failed to fetch recordings:', res.error);
+        setRecordsList([]);
       }
     } catch (e) {
-      console.error('Failed to load recordings:', e);
+      console.error('📂 Failed to load recordings:', e);
+      setRecordsList([]);
     }
   }, [token]);
 
@@ -212,11 +221,15 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
   });
 
   // Records management functions
-  const handleAccessRecords = () => {
+  const handleAccessRecords = async () => {
+    console.log('📂 handleAccessRecords called, current showRecordsList:', showRecordsList);
+    console.log('📂 Current recordsList length:', recordsList.length);
+    
     // Refresh recordings when opening
-    fetchRecordings();
+    await fetchRecordings();
 
     if (!showRecordsList) {
+      console.log('📂 Setting showRecordsList to true');
       setShowRecordsList(true);
       
       recordsButtonScale.value = withSpring(1.1, {
@@ -234,6 +247,7 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
   };
 
   const handleCloseRecords = () => {
+    console.log('📂 handleCloseRecords called');
     recordsListOpacity.value = withTiming(0, { duration: 200 });
     recordsListScale.value = withSpring(0, {
       damping: 20,

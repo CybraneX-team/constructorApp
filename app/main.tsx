@@ -25,7 +25,10 @@ import { useVoiceMemos } from '../hooks/useVoiceMemos';
 import * as ImagePicker from 'expo-image-picker';
 import MediaOptionsModal from '../components/MediaOptionsModal';
 import DescriptionPrompt from '../components/DescriptionPrompt';
+import WorkProgressModal from '../components/WorkProgressModal';
 import { useModalStack } from '../contexts/ModalStackContext';
+import { useSharedValue, withTiming, withSpring } from 'react-native-reanimated';
+import { useJobProgress } from '../hooks/useJobProgress';
 
 const VoiceMemosScreen = () => {
   const {
@@ -77,6 +80,9 @@ const VoiceMemosScreen = () => {
 
   const currentTitle = React.useMemo(() => getCurrentTitle(), [getCurrentTitle]);
   const { registerModal, unregisterModal } = useModalStack();
+  
+  // Fetch job progress data - using the same job number as recordings
+  const { jobProgress, loading: jobProgressLoading, error: jobProgressError, refreshProgress } = useJobProgress('CFX 417-151');
 
   useEffect(() => {
     console.log(Dimensions.get('window'));
@@ -95,6 +101,12 @@ const VoiceMemosScreen = () => {
   // Success toast state
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  
+  // Work Progress Modal state
+  const [showWorkProgressModal, setShowWorkProgressModal] = useState(false);
+  const workProgressBackdropOpacity = useSharedValue(0);
+  const workProgressModalScale = useSharedValue(0.8);
+  const workProgressModalOpacity = useSharedValue(0);
 
   const requestPermissions = async () => {
     try {
@@ -308,6 +320,16 @@ const VoiceMemosScreen = () => {
     // "Search Records" is index 2 in initial memos
     if (currentIndex !== 2) handleCircleClick(2);
   };
+  
+  // Work Progress Modal handlers
+  const handleShowWorkProgressModal = () => {
+    console.log('🔍 Showing work progress modal from main screen');
+    setShowWorkProgressModal(true);
+  };
+  
+  const handleCloseWorkProgressModal = () => {
+    setShowWorkProgressModal(false);
+  };
 
   const { height, width } = Dimensions.get('window');
   const isIPhone16 = Platform.OS === 'ios' && height === 852 && width === 393;
@@ -347,6 +369,7 @@ const VoiceMemosScreen = () => {
                       handlePlayPress={handlePlayPress}
                       handleCircleClick={handleCircleClick}
                       handleSearchPress={handleSearchPress}
+                      onShowWorkProgressModal={handleShowWorkProgressModal}
                     />
                   ))}
                 </Animated.View>
@@ -365,16 +388,21 @@ const VoiceMemosScreen = () => {
             onCameraPress={openMediaOptions}
           />
 
-          {showRecordsList && (
-            <RecordsList
-              records={recordsList}
-              onClose={handleCloseRecords}
-              listScale={recordsListScale}
-              listOpacity={recordsListOpacity}
-              backdropOpacity={recordsBackdropOpacity}
-              onRecordClick={handleRecordClick}
-            />
-          )}
+          {(() => {
+            console.log('📂 Main screen - showRecordsList:', showRecordsList);
+            console.log('📂 Main screen - recordsList length:', recordsList?.length);
+            console.log('📂 Main screen - recordsList:', recordsList);
+            return showRecordsList && (
+              <RecordsList
+                records={recordsList}
+                onClose={handleCloseRecords}
+                listScale={recordsListScale}
+                listOpacity={recordsListOpacity}
+                backdropOpacity={recordsBackdropOpacity}
+                onRecordClick={handleRecordClick}
+              />
+            );
+          })()}
 
           {showRecordDetail && selectedRecord && (
             <RecordDetailView
@@ -433,6 +461,24 @@ const VoiceMemosScreen = () => {
             duration={3000}
             position="center"
             type="success"
+          />
+          
+          {/* Work Progress Modal */}
+          <WorkProgressModal
+            visible={showWorkProgressModal}
+            workProgress={jobProgress || {
+              overallProgress: 0,
+              tasksCompleted: 0,
+              totalTasks: 0,
+              inProgressTasks: 0,
+              remainingTasks: [],
+              allTasks: [],
+              lastUpdated: new Date().toISOString(),
+              categories: {},
+            }}
+            onClose={handleCloseWorkProgressModal}
+            onRefresh={refreshProgress}
+            loading={jobProgressLoading}
           />
         </View>
       </GestureHandlerRootView>

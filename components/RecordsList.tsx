@@ -135,6 +135,10 @@ const RecordsList: React.FC<RecordsListProps> = ({
   backdropOpacity,
   onRecordClick 
 }) => {
+  console.log('📂 RecordsList render - records:', records);
+  console.log('📂 RecordsList render - records length:', records?.length);
+  console.log('📂 RecordsList render - records type:', typeof records);
+  
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
   }));
@@ -166,6 +170,11 @@ const RecordsList: React.FC<RecordsListProps> = ({
     }
   };
 
+  // Ensure records is an array
+  const safeRecords = Array.isArray(records) ? records : [];
+  console.log('📂 RecordsList render - safeRecords:', safeRecords);
+  console.log('📂 RecordsList render - safeRecords length:', safeRecords.length);
+
   return (
     <Animated.View style={[styles.recordsOverlay, backdropStyle]}>
       <TouchableOpacity 
@@ -178,7 +187,7 @@ const RecordsList: React.FC<RecordsListProps> = ({
         <View style={styles.recordsHeader}>
           <View style={styles.headerContent}>
             <Text style={styles.recordsTitle}>All Recordings</Text>
-            <Text style={styles.recordsSubtitle}>{records.length} recordings available</Text>
+            <Text style={styles.recordsSubtitle}>{safeRecords.length} recordings available</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <View style={styles.closeButtonInner}>
@@ -188,18 +197,27 @@ const RecordsList: React.FC<RecordsListProps> = ({
         </View>
         
         <FlatList
-          data={records}
+          data={safeRecords}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.recordsListContent}
-          renderItem={({ item, index }) => (
-            <RecordItem
-              item={item}
-              index={index}
-              onRecordClick={onRecordClick}
-              getTypeIcon={getTypeIcon}
-              getTypeColor={getTypeColor}
-            />
+          renderItem={({ item, index }) => {
+            console.log('📂 Rendering record item:', item, 'at index:', index);
+            return (
+              <RecordItem
+                item={item}
+                index={index}
+                onRecordClick={onRecordClick}
+                getTypeIcon={getTypeIcon}
+                getTypeColor={getTypeColor}
+              />
+            );
+          }}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No recordings found</Text>
+              <Text style={styles.emptySubtext}>Try recording something new!</Text>
+            </View>
           )}
         />
       </Animated.View>
@@ -408,6 +426,23 @@ const styles = StyleSheet.create({
   summaryText: { color: '#111827' },
   summaryBullet: { color: '#111827' },
   summaryCode: { color: '#374151', fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontSize: 12 },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  emptySubtext: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
 });
 
 export default RecordsList; 
