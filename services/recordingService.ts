@@ -459,6 +459,7 @@ class RecordingService {
   async getAllRecordings(token: string): Promise<{
     success: boolean;
     recordings: any[];
+    dayRecordings: any[];
     count: number;
     error?: string;
   }> {
@@ -481,10 +482,12 @@ class RecordingService {
 
       const result = await response.json();
       console.log('✅ Recordings fetched successfully:', result.count, 'recordings');
+      console.log('📂 API response structure:', Object.keys(result));
       
       return {
         success: result.success,
         recordings: result.recordings || [],
+        dayRecordings: result.dayRecordings || [],
         count: result.count || 0,
       };
 
@@ -494,6 +497,7 @@ class RecordingService {
       return {
         success: false,
         recordings: [],
+        dayRecordings: [],
         count: 0,
         error: error instanceof Error ? error.message : 'Failed to fetch recordings',
       };
@@ -603,7 +607,9 @@ class RecordingService {
     error?: string;
   }> {
     try {
+      // The backend endpoint is GET, not POST, and doesn't require email in body
       const url = `${this.baseUrl}/recordings/${encodeURIComponent(id)}/summary`;
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {

@@ -2,25 +2,14 @@
 export interface JobProgressResponse {
   success: boolean;
   jobNumber: string;
-  overallProgress: number;
-  lastUpdated: string;
-  summary: {
+  progress: {
+    completionPercentage: number;
+    tasksCompleted: number;
+    tasksLeft: number;
     totalTasks: number;
-    completedTasks: number;
-    inProgressTasks: number;
-    notStartedTasks: number;
   };
-  categories: {
-    [key: string]: {
-      totalTasks: number;
-      completedTasks: number;
-      progressPercentage: number;
-    };
-  };
-  tasks: {
-    completed: JobTask[];
-    inProgress: JobTask[];
-    notStarted: JobTask[];
+  taskDetails: {
+    [key: string]: boolean; // true = completed, false = not completed
   };
 }
 
@@ -59,7 +48,7 @@ class JobProgressService {
   }
 
   async getJobProgress(jobNumber: string): Promise<ProcessedJobProgress> {
-    const apiUrl = `${this.baseUrl}/job/${jobNumber}/progress`;
+    const apiUrl = `${this.baseUrl}/progress?jobNumber=${encodeURIComponent(jobNumber)}`;
     console.log('🔍 Fetching job progress for:', jobNumber, 'from URL:', apiUrl);
     
     try {
@@ -122,29 +111,49 @@ class JobProgressService {
   }
 
   private processJobProgressData(data: JobProgressResponse): ProcessedJobProgress {
-    // Combine all tasks into a single array
-    const allTasks = [
-      ...data.tasks.completed,
-      ...data.tasks.inProgress,
-      ...data.tasks.notStarted,
-    ];
-
-    // Get remaining tasks (not completed)
-    const remainingTasks = [
-      ...data.tasks.inProgress,
-      ...data.tasks.notStarted,
-    ];
+    console.log('🔍 Processing job progress data:', data);
+    
+    // The API returns a different structure than expected
+    // API response: { progress: { completionPercentage, tasksCompleted, tasksLeft, totalTasks }, taskDetails: {...} }
+    
+    // Create tasks based on taskDetails
+    const allTasks: JobTask[] = [];
+    const remainingTasks: JobTask[] = [];
+    
+    if (data.taskDetails) {
+      Object.entries(data.taskDetails).forEach(([category, isCompleted]) => {
+        const task: JobTask = {
+          category: this.formatCategoryName(category),
+          task: `${this.formatCategoryName(category)} tasks`,
+          status: isCompleted ? 'completed' as const : 'not_started' as const,
+          completionPercentage: isCompleted ? 100 : 0,
+          evidence: [],
+        };
+        
+        allTasks.push(task);
+        if (!isCompleted) {
+          remainingTasks.push(task);
+        }
+      });
+    }
 
     return {
-      overallProgress: data.overallProgress,
-      tasksCompleted: data.summary.completedTasks,
-      totalTasks: data.summary.totalTasks,
-      inProgressTasks: data.summary.inProgressTasks,
+      overallProgress: data.progress?.completionPercentage || 0,
+      tasksCompleted: data.progress?.tasksCompleted || 0,
+      totalTasks: data.progress?.totalTasks || 0,
+      inProgressTasks: 0, // API doesn't provide in-progress count
       remainingTasks,
       allTasks,
-      lastUpdated: data.lastUpdated,
-      categories: data.categories,
+      lastUpdated: new Date().toISOString(),
+      categories: data.taskDetails || {},
     };
+  }
+
+  private formatCategoryName(category: string): string {
+    return category
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .replace('Labour', 'Labor');
   }
 
   private getDefaultJobProgress(): ProcessedJobProgress {

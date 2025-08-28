@@ -132,7 +132,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return null;
       }
 
-      console.log('🔄 Attempting to refresh token...');
+      console.log('  Attempting to refresh token...');
       const response = await axiosInstance.post('/refresh', {});
 
       const { token: newToken } = response.data;

@@ -17,6 +17,7 @@ interface RecordButtonProps {
   onSearchPress?: () => void;
   onMoveToSearchCircle?: () => void;
   onCameraPress?: () => void;
+  onRefreshPress?: () => void;
 }
 
 export const RecordButton: React.FC<RecordButtonProps> = ({
@@ -28,6 +29,7 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   onSearchPress,
   onMoveToSearchCircle,
   onCameraPress,
+  onRefreshPress,
 }) => {
   const { logout } = useAuth();
   const [isRecordingStarted, setIsRecordingStarted] = React.useState(false);
@@ -107,6 +109,11 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
 
   return (
     <View style={styles.recordSection}>
+      {/* Refresh Button */}
+      <TouchableOpacity style={styles.refreshButton} onPress={onRefreshPress}>
+        <MaterialIcons name="refresh" size={24} color="#8E8E93" />
+      </TouchableOpacity>
+      
       {/* Logout Button */}
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <MaterialIcons name="logout" size={24} color="#8E8E93" />
@@ -264,6 +271,18 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#8E8E93',
     textAlign: 'center',
+  },
+  refreshButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20, // Position to the left of screen
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
   },
   logoutButton: {
     position: 'absolute',

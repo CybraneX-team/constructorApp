@@ -18,7 +18,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 const screenHeight = Dimensions.get('window').height;
 
-export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) => void }) => {
+export const useVoiceMemos = (options?: { 
+  onUploadSuccess?: (message: string) => void;
+  onRefreshProgress?: () => Promise<void>;
+}) => {
   // Get authentication context
   const { token } = useAuth();
   
@@ -90,11 +93,13 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
       const res = await recordingService.getAllRecordings(token);
       console.log('📂 API response:', res);
       
-      if (res.success) {
-        const mapped = (res.recordings || []).map(mapBackendRecordingToListItem);
-        console.log('📂 Mapped recordings:', mapped);
-        console.log('📂 Records count:', mapped.length);
-        setRecordsList(mapped);
+              if (res.success) {
+          // The backend returns 'dayRecordings', not 'recordings'
+          const dayRecordings = res.dayRecordings || res.recordings || [];
+          const mapped = dayRecordings.map(mapBackendRecordingToListItem);
+          console.log('📂 Mapped dayRecordings:', mapped);
+          console.log('📂 Records count:', mapped.length);
+          setRecordsList(mapped);
       } else {
         console.error('📂 Failed to fetch recordings:', res.error);
         setRecordsList([]);
@@ -225,11 +230,8 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
     console.log('📂 handleAccessRecords called, current showRecordsList:', showRecordsList);
     console.log('📂 Current recordsList length:', recordsList.length);
     
-    // Refresh recordings when opening
-    await fetchRecordings();
-
     if (!showRecordsList) {
-      console.log('📂 Setting showRecordsList to true');
+      console.log('📂 Setting showRecordsList to true immediately');
       setShowRecordsList(true);
       
       recordsButtonScale.value = withSpring(1.1, {
@@ -243,6 +245,11 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
         stiffness: 600,
       });
       recordsListOpacity.value = withTiming(1, { duration: 200 });
+      
+      // Fetch recordings in the background after modal is open
+      setTimeout(() => {
+        fetchRecordings();
+      }, 100);
     }
   };
 
@@ -435,21 +442,30 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
         }, token || undefined);
 
         if (uploadResult.success) {
-          // Add/update the new recording in the records list with accurate duration
-          const newRecord = {
-            id: uploadResult.recordingId || `rec_${Date.now()}`,
-            title: generatedTitle,
-            duration: formattedDuration,
-            date: new Date().toLocaleString(),
-            jobNumber: 'CFX 417-151', // TODO: from context
-            type: 'Voice Memo'
-          };
-          setRecordsList(prev => [newRecord, ...prev]);
+          console.log('  Recording uploaded successfully, refreshing data...');
+          
+          // Immediately refresh both work progress and daily recordings
+          try {
+            // Refresh work progress data
+            if (options?.onRefreshProgress) {
+              console.log('  Refreshing work progress...');
+              await options.onRefreshProgress();
+            }
+            
+            // Refresh daily recordings to get the updated consolidated data
+            console.log('  Refreshing daily recordings...');
+            await fetchRecordings();
+            
+            console.log('  Data refresh completed');
+          } catch (refreshError) {
+            console.error('  Failed to refresh data after upload:', refreshError);
+            // Continue with success flow even if refresh fails
+          }
           
           // Reset saving state and trigger success callback
           setIsSaving(false);
           if (options?.onUploadSuccess) {
-            options.onUploadSuccess('🎉 Recording uploaded successfully!');
+            options.onUploadSuccess('  Recording uploaded successfully!');
           }
         } else {
           setIsSaving(false);
@@ -695,36 +711,37 @@ export const useVoiceMemos = (options?: { onUploadSuccess?: (message: string) =>
     handleCloseSearch,
     uploadRecording,
     formatDuration,
+    fetchRecordings,
   };
 };
 
-function mapBackendRecordingToListItem(rec: any) {
-  // Coerce duration from various possible backend fields
-  const toMmSs = (msOrSec: any) => {
-    if (msOrSec === undefined || msOrSec === null) return undefined;
-    let ms = Number(msOrSec);
-    if (!isFinite(ms)) return undefined;
-    // If looks like seconds (small number), convert to ms
-    if (ms < 1000) ms = ms * 1000;
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-    const s = (totalSeconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  const durationStr = (
-    rec.duration && typeof rec.duration === 'string' && rec.duration.includes(':') ? rec.duration :
-    rec.metadata?.duration && typeof rec.metadata.duration === 'string' && rec.metadata.duration.includes(':') ? rec.metadata.duration :
-    toMmSs(rec.durationMs ?? rec.duration_ms ?? rec.lengthMs ?? rec.length_ms ?? rec.audioDurationMs ?? rec.audio_duration_ms ?? rec.seconds ?? rec.durationSeconds ?? rec.audio?.durationMs)
-  ) || '00:00';
-
+function mapBackendRecordingToListItem(dayRecording: any) {
+  // The backend returns dayRecordings (consolidated daily recordings), not individual recordings
+  // Each dayRecording contains a structuredSummary with the daily work data
+  
+  const structuredSummary = dayRecording.structuredSummary || {};
+  
+  // Format duration from totalDuration or structuredSummary duration
+  const durationStr = dayRecording.totalDuration || structuredSummary.duration || '00:00';
+  
+  // Use just the date as the title
+  const title = dayRecording.date || structuredSummary.date || new Date().toLocaleDateString();
+  
+  // Format date for display
+  const dateStr = dayRecording.date || structuredSummary.date || new Date().toLocaleDateString();
+  
   return {
-    id: rec.id || rec._id || `rec_${Date.now()}`,
-    title: rec.title || 'Recording',
+    id: dayRecording.id || `day_${Date.now()}`,
+    title: title,
     duration: durationStr,
-    date: rec.date || rec.createdAt || rec.created_at || new Date().toLocaleString(),
-    jobNumber: rec.jobNumber || rec.job_number || rec.job || '-',
-    type: rec.type || 'Voice Memo',
+    date: dateStr,
+    jobNumber: dayRecording.jobNumber || structuredSummary.jobNumber || '-',
+    type: 'Work Summary', // These are always work summaries since they're consolidated daily recordings
+    // Add additional data for the detail view
+    structuredSummary: structuredSummary,
+    recordingCount: dayRecording.recordingCount || 0,
+    totalFileSize: dayRecording.totalFileSize || 0,
+    consolidatedSummary: dayRecording.consolidatedSummary || '',
   };
 }
 
@@ -735,6 +752,7 @@ function createEmptyRecordDetailFromListItem(item: any): RecordDetail {
     duration: item?.duration || '00:00',
     date: item?.date || new Date().toLocaleString(),
     jobNumber: item?.jobNumber || '-',
+    structuredSummary: item?.structuredSummary, // Include the structuredSummary data
     laborData: {
       manager: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
       foreman: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },

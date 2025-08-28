@@ -6,6 +6,7 @@ import {
   FlatList,
   StyleSheet,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -175,6 +176,9 @@ const RecordsList: React.FC<RecordsListProps> = ({
   console.log('📂 RecordsList render - safeRecords:', safeRecords);
   console.log('📂 RecordsList render - safeRecords length:', safeRecords.length);
 
+  // Show loading state if no records are available yet
+  const isLoading = safeRecords.length === 0;
+
   return (
     <Animated.View style={[styles.recordsOverlay, backdropStyle]}>
       <TouchableOpacity 
@@ -187,7 +191,9 @@ const RecordsList: React.FC<RecordsListProps> = ({
         <View style={styles.recordsHeader}>
           <View style={styles.headerContent}>
             <Text style={styles.recordsTitle}>All Recordings</Text>
-            <Text style={styles.recordsSubtitle}>{safeRecords.length} recordings available</Text>
+            <Text style={styles.recordsSubtitle}>
+              {isLoading ? 'Loading recordings...' : `${safeRecords.length} recordings available`}
+            </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <View style={styles.closeButtonInner}>
@@ -196,30 +202,37 @@ const RecordsList: React.FC<RecordsListProps> = ({
           </TouchableOpacity>
         </View>
         
-        <FlatList
-          data={safeRecords}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.recordsListContent}
-          renderItem={({ item, index }) => {
-            console.log('📂 Rendering record item:', item, 'at index:', index);
-            return (
-              <RecordItem
-                item={item}
-                index={index}
-                onRecordClick={onRecordClick}
-                getTypeIcon={getTypeIcon}
-                getTypeColor={getTypeColor}
-              />
-            );
-          }}
-          ListEmptyComponent={() => (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No recordings found</Text>
-              <Text style={styles.emptySubtext}>Try recording something new!</Text>
-            </View>
-          )}
-        />
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Loading ...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={safeRecords}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.recordsListContent}
+            renderItem={({ item, index }) => {
+              console.log('📂 Rendering record item:', item, 'at index:', index);
+              return (
+                <RecordItem
+                  item={item}
+                  index={index}
+                  onRecordClick={onRecordClick}
+                  getTypeIcon={getTypeIcon}
+                  getTypeColor={getTypeColor}
+                />
+              );
+            }}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No recordings found</Text>
+                <Text style={styles.emptySubtext}>Try recording something new!</Text>
+              </View>
+            )}
+          />
+        )}
       </Animated.View>
     </Animated.View>
   );
@@ -442,6 +455,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 16,
   },
 });
 

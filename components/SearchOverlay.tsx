@@ -310,7 +310,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
       
       // If we get a 403 error (token expired), try to refresh the token and retry
       if (!result.success && result.error && result.error.includes('403')) {
-        console.log('🔄 Token may be expired, attempting refresh...');
+        console.log('  Token may be expired, attempting refresh...');
         const newToken = await refreshToken();
         if (newToken) {
           console.log('✅ Token refreshed, retrying search...');

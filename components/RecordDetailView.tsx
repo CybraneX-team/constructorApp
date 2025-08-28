@@ -25,6 +25,7 @@ const isSmallScreen = screenWidth < 360;
 
 // Separate component for detail content to avoid hook violations
 const DetailContent: React.FC<{ record: any }> = ({ record }) => {
+  console.log('🔍 DetailContent - Record received:', JSON.stringify(record, null, 2));
 
   // All animated styles moved here to avoid hook violations
   const laborSectionStyle = useAnimatedStyle(() => ({
@@ -52,71 +53,280 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
     transform: [{ translateY: withTiming(0, { duration: 800 }) }],
   }));
 
+  // Helper function to check if an object has any non-empty values
+  const hasData = (obj: any): boolean => {
+    if (!obj || typeof obj !== 'object') {
+      console.log('🔍 hasData - Object is null/undefined or not an object:', obj);
+      return false;
+    }
+    const hasAnyData = Object.values(obj).some(value => {
+      if (typeof value === 'string') return value.trim() !== '';
+      if (typeof value === 'number') return value !== 0;
+      if (typeof value === 'object' && value !== null) return hasData(value);
+      return false;
+    });
+    console.log('🔍 hasData - Object has data:', hasAnyData, 'Object keys:', Object.keys(obj));
+    return hasAnyData;
+  };
+
+  // Helper function to check if materials/equipment object has meaningful data
+  const hasMeaningfulData = (obj: any): boolean => {
+    if (!obj || typeof obj !== 'object') {
+      console.log('🔍 hasMeaningfulData - Object is null/undefined or not an object:', obj);
+      return false;
+    }
+    
+    // Check if any item in the object has meaningful data
+    const hasAnyMeaningfulData = Object.values(obj).some((item: any) => {
+      if (typeof item === 'object' && item !== null) {
+        // For materials: check if any field has meaningful data
+        if (item.qty !== undefined || item.uom !== undefined || item.unitRate !== undefined) {
+          const hasMaterialData = (item.qty && item.qty.trim() !== '') ||
+                                 (item.uom && item.uom.trim() !== '') ||
+                                 (item.unitRate && item.unitRate.trim() !== '' && item.unitRate !== '$-') ||
+                                 (item.tax && item.tax.trim() !== '' && item.tax !== '$-') ||
+                                 (item.total && item.total.trim() !== '' && item.total !== '$-');
+          return hasMaterialData;
+        }
+        // For equipment: check if any field has meaningful data
+        if (item.days !== undefined || item.monthlyRate !== undefined || item.itemRate !== undefined) {
+          const hasEquipmentData = (item.days && item.days !== 0) ||
+                                  (item.monthlyRate && item.monthlyRate.trim() !== '' && item.monthlyRate !== '$-') ||
+                                  (item.itemRate && item.itemRate.trim() !== '' && item.itemRate !== '$-');
+          return hasEquipmentData;
+        }
+        // For subcontractors: check if any field has meaningful data
+        if (item.employees !== undefined || item.hours !== undefined) {
+          const hasSubcontractorData = (item.employees && item.employees !== 0) ||
+                                      (item.hours && item.hours !== 0);
+          return hasSubcontractorData;
+        }
+      }
+      return false;
+    });
+    
+    console.log('🔍 hasMeaningfulData - Object has meaningful data:', hasAnyMeaningfulData, 'Object:', obj);
+    return hasAnyMeaningfulData;
+  };
+
+  // Helper function to check if a labor role has data
+  const hasLaborRoleData = (laborRole: any): boolean => {
+    if (!laborRole) {
+      console.log('🔍 hasLaborRoleData - Labor role is null/undefined');
+      return false;
+    }
+    const fields = ['startTime', 'finishTime', 'hours', 'rate', 'total'];
+    const hasData = fields.some(field => {
+      const value = laborRole[field];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        // Treat "0.00" hours and "$-" rates as empty
+        if (field === 'hours' && trimmed === '0.00') return false;
+        if ((field === 'rate' || field === 'total') && trimmed === '$-') return false;
+        return trimmed !== '';
+      }
+      if (typeof value === 'number') return value !== 0;
+      return false;
+    });
+    console.log('🔍 hasLaborRoleData - Role has data:', hasData, 'Role data:', laborRole);
+    return hasData;
+  };
+
+  // Helper function to check if a material has data
+  const hasMaterialItemData = (material: any): boolean => {
+    if (!material) {
+      console.log('🔍 hasMaterialItemData - Material is null/undefined');
+      return false;
+    }
+    const fields = ['qty', 'uom', 'unitRate', 'tax', 'total'];
+    const hasData = fields.some(field => {
+      const value = material[field];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        // Treat "$-" rates and totals as empty
+        if ((field === 'unitRate' || field === 'tax' || field === 'total') && trimmed === '$-') return false;
+        return trimmed !== '';
+      }
+      if (typeof value === 'number') return value !== 0;
+      return false;
+    });
+    console.log('🔍 hasMaterialItemData - Material has data:', hasData, 'Material data:', material);
+    return hasData;
+  };
+
+  // Helper function to check if equipment has data
+  const hasEquipmentItemData = (equipment: any): boolean => {
+    if (!equipment) {
+      console.log('🔍 hasEquipmentItemData - Equipment is null/undefined');
+      return false;
+    }
+    const fields = ['days', 'monthlyRate', 'itemRate'];
+    const hasData = fields.some(field => {
+      const value = equipment[field];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        // Treat "$-" rates as empty
+        if ((field === 'monthlyRate' || field === 'itemRate') && trimmed === '$-') return false;
+        return trimmed !== '';
+      }
+      if (typeof value === 'number') return value !== 0;
+      return false;
+    });
+    console.log('🔍 hasEquipmentItemData - Equipment has data:', hasData, 'Equipment data:', equipment);
+    return hasData;
+  };
+
+  // Check if any section has data
+  const hasDailyActivities = record.dailyActivities && record.dailyActivities.trim() !== '';
+  const hasSubcontractors = hasMeaningfulData(record.subcontractors);
+  const hasLaborData = record.laborData && Object.values(record.laborData).some(hasLaborRoleData);
+  const hasMaterialsData = hasMeaningfulData(record.materialsDeliveries);
+  const hasEquipmentData = hasMeaningfulData(record.equipment);
+
+  console.log('🔍 Section visibility decisions:');
+  console.log('  - Daily Activities:', hasDailyActivities, 'Value:', record.dailyActivities);
+  console.log('  - Subcontractors:', hasSubcontractors);
+  console.log('  - Labor Data:', hasLaborData);
+  console.log('  - Materials Data:', hasMaterialsData);
+  console.log('  - Equipment Data:', hasEquipmentData);
+
+  // Check if any section has data at all
+  const hasAnyData = hasDailyActivities || hasSubcontractors || hasLaborData || hasMaterialsData || hasEquipmentData;
+
+  console.log('🔍 Has any data at all:', hasAnyData);
+
+  // If no data at all, show message
+  if (!hasAnyData) {
+    console.log('🔍 No data available - showing empty state message');
+    return (
+      <View style={styles.noDataContainer}>
+        <Text style={styles.noDataTitle}>No Data Available</Text>
+        <Text style={styles.noDataMessage}>
+          There is no data available for this recording or the data format is incorrect.
+        </Text>
+      </View>
+    );
+  }
+
+  console.log('🔍 Rendering sections with data...');
+
   return (
     <View>
-      {/* Daily Activities Section */}
-      <Animated.View style={[styles.detailSection, activitiesSectionStyle]}>
-        <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
-        <View style={styles.activitiesCard}>
-          <Text style={styles.activitiesText}>{record.dailyActivities}</Text>
-        </View>
-      </Animated.View>
+      {/* Daily Activities Section - Only render if has content */}
+      {hasDailyActivities && (
+        <Animated.View style={[styles.detailSection, activitiesSectionStyle]}>
+          <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
+          <View style={styles.activitiesCard}>
+            <Text style={styles.activitiesText}>{record.dailyActivities}</Text>
+          </View>
+        </Animated.View>
+      )}
 
-      {/* Subcontractors Section */}
-      <Animated.View style={[styles.detailSection, subcontractorsSectionStyle]}>
-        <Text style={styles.sectionTitle}>SUBCONTRACTORS</Text>
-        <SubcontractorCard 
-          company="Superior Team Rebar"
-          employees={record.subcontractors.superiorTeamRebar.employees}
-          hours={record.subcontractors.superiorTeamRebar.hours}
-        />
-      </Animated.View>
+      {/* Subcontractors Section - Only render if has data */}
+      {hasSubcontractors && (
+        <Animated.View style={[styles.detailSection, subcontractorsSectionStyle]}>
+          <Text style={styles.sectionTitle}>SUBCONTRACTORS</Text>
+          {Object.entries(record.subcontractors).map(([key, data]: [string, any]) => {
+            console.log('🔍 Processing subcontractor:', key, 'Data:', data);
+            if (hasData(data)) {
+              const companyName = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              console.log('🔍 Rendering subcontractor card for:', companyName);
+              return (
+                <SubcontractorCard 
+                  key={key}
+                  company={companyName}
+                  employees={data.employees || 0}
+                  hours={data.hours || 0}
+                />
+              );
+            } else {
+              console.log('🔍 Skipping subcontractor:', key, '- no data');
+              return null;
+            }
+          })}
+        </Animated.View>
+      )}
 
-      {/* Labor Section */}
-      <Animated.View style={[styles.detailSection, laborSectionStyle]}>
-        <Text style={styles.sectionTitle}>LABOR</Text>
-        <View style={styles.cardsContainer}>
-          <LaborCard title="Manager" data={record.laborData.manager} color="#000" />
-          <LaborCard title="Foreman" data={record.laborData.foreman} color="#000" />
-          <LaborCard title="Carpenter" data={record.laborData.carpenter} color="#000" />
-          <LaborCard title="Skill Laborer" data={record.laborData.skillLaborer} color="#000" />
-          <LaborCard title="Carpenter (Extra)" data={record.laborData.carpenterExtra} color="#000" />
-        </View>
-      </Animated.View>
+      {/* Labor Section - Only render if has data */}
+      {hasLaborData && (
+        <Animated.View style={[styles.detailSection, laborSectionStyle]}>
+          <Text style={styles.sectionTitle}>LABOR</Text>
+          <View style={styles.cardsContainer}>
+            {Object.entries(record.laborData).map(([role, data]: [string, any]) => {
+              console.log('🔍 Processing labor role:', role, 'Data:', data);
+              if (hasLaborRoleData(data)) {
+                const title = role.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                console.log('🔍 Rendering labor card for:', title);
+                return (
+                  <LaborCard 
+                    key={role}
+                    title={title} 
+                    data={data} 
+                    color="#000" 
+                  />
+                );
+              } else {
+                console.log('🔍 Skipping labor role:', role, '- no data');
+                return null;
+              }
+            })}
+          </View>
+        </Animated.View>
+      )}
 
-      
+      {/* Materials Deliveries Section - Only render if has data */}
+      {hasMaterialsData && (
+        <Animated.View style={[styles.detailSection, materialsSectionStyle]}>
+          <Text style={styles.sectionTitle}>MATERIALS DELIVERIES</Text>
+          <View style={styles.cardsContainer}>
+            {Object.entries(record.materialsDeliveries).map(([key, data]: [string, any]) => {
+              console.log('🔍 Processing material:', key, 'Data:', data);
+              if (hasMaterialItemData(data)) {
+                const title = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                console.log('🔍 Rendering material card for:', title);
+                return (
+                  <MaterialCard 
+                    key={key}
+                    title={title}
+                    data={data}
+                    color="#000"
+                  />
+                );
+              } else {
+                console.log('🔍 Skipping material:', key, '- no data');
+                return null;
+              }
+            })}
+          </View>
+        </Animated.View>
+      )}
 
-      
-
-      {/* Materials Deliveries Section */}
-      <Animated.View style={[styles.detailSection, materialsSectionStyle]}>
-        <Text style={styles.sectionTitle}>MATERIALS DELIVERIES</Text>
-        <View style={styles.cardsContainer}>
-          <MaterialCard 
-            title="Argos Class 4 4500 PSI"
-            data={record.materialsDeliveries.argosClass4}
-            color="#000"
-          />
-          <MaterialCard 
-            title="Expansion Joint"
-            data={record.materialsDeliveries.expansionJoint}
-            color="#000"
-          />
-        </View>
-      </Animated.View>
-
-      {/* Equipment Section */}
-      <Animated.View style={[styles.detailSection, equipmentSectionStyle]}>
-        <Text style={styles.sectionTitle}>EQUIPMENT</Text>
-        <View style={styles.cardsContainer}>
-          <EquipmentCard title="Truck" data={record.equipment.truck} color="#000" />
-          <EquipmentCard title="14k Equipment Trailer" data={record.equipment.equipmentTrailer} color="#000" />
-          <EquipmentCard title="Fuel" data={record.equipment.fuel} color="#000" />
-          <EquipmentCard title="Mini Excavator" data={record.equipment.miniExcavator} color="#000" />
-          <EquipmentCard title="Closed Tool Trailer" data={record.equipment.closedToolTrailer} color="#000" />
-          <EquipmentCard title="Skid Stir" data={record.equipment.skidStir} color="#000" />
-        </View>
-      </Animated.View>
+      {/* Equipment Section - Only render if has data */}
+      {hasEquipmentData && (
+        <Animated.View style={[styles.detailSection, equipmentSectionStyle]}>
+          <Text style={styles.sectionTitle}>EQUIPMENT</Text>
+          <View style={styles.cardsContainer}>
+            {Object.entries(record.equipment).map(([key, data]: [string, any]) => {
+              console.log('🔍 Processing equipment:', key, 'Data:', data);
+              if (hasEquipmentItemData(data)) {
+                const title = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                console.log('🔍 Rendering equipment card for:', title);
+                return (
+                  <EquipmentCard 
+                    key={key}
+                    title={title} 
+                    data={data} 
+                    color="#000" 
+                  />
+                );
+              } else {
+                console.log('🔍 Skipping equipment:', key, '- no data');
+                return null;
+              }
+            })}
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 };
@@ -329,6 +539,8 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   detailOpacity, 
   backdropOpacity 
 }) => {
+  console.log('🔍 RecordDetailView - Initial record:', JSON.stringify(record, null, 2));
+  
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   const [resolvedRecord, setResolvedRecord] = useState(record);
@@ -339,13 +551,51 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
 
     const loadSummary = async () => {
       try {
-        if (!token || !record?.id) return;
-        const res = await recordingService.getRecordingSummary(record.id, token);
-        if (!res.success || !res.summary) return;
-        const mapped = mapSummaryToRecordDetail(record, res.summary);
-        if (isMounted) setResolvedRecord(mapped);
+        console.log('🔍 RecordDetailView - Loading summary for record ID:', record?.id);
+        
+        if (!record?.id) {
+          console.log('🔍 RecordDetailView - Missing record ID, skipping summary load');
+          return;
+        }
+        
+        // Use the existing structuredSummary data from the record instead of making API call
+        if (record.structuredSummary) {
+          console.log('🔍 RecordDetailView - Using existing structuredSummary data');
+          const mapped = mapSummaryToRecordDetail(record, record.structuredSummary);
+          console.log('🔍 RecordDetailView - Mapped record detail:', JSON.stringify(mapped, null, 2));
+          
+          if (isMounted) {
+            console.log('🔍 RecordDetailView - Setting resolved record');
+            setResolvedRecord(mapped);
+          }
+        } else {
+          console.log('🔍 RecordDetailView - No structuredSummary available, trying API call');
+          
+          if (!token) {
+            console.log('🔍 RecordDetailView - No token available for API call');
+            return;
+          }
+          
+          console.log('🔍 RecordDetailView - Calling recordingService.getRecordingSummary...');
+          const res = await recordingService.getRecordingSummary(record.id, token);
+          console.log('🔍 RecordDetailView - Summary API response:', JSON.stringify(res, null, 2));
+          
+          if (!res.success || !res.summary) {
+            console.log('🔍 RecordDetailView - Summary API failed or no summary data');
+            return;
+          }
+          
+          console.log('🔍 RecordDetailView - Mapping summary to record detail...');
+          const mapped = mapSummaryToRecordDetail(record, res.summary);
+          console.log('🔍 RecordDetailView - Mapped record detail:', JSON.stringify(mapped, null, 2));
+          
+          if (isMounted) {
+            console.log('🔍 RecordDetailView - Setting resolved record');
+            setResolvedRecord(mapped);
+          }
+        }
       } catch (e) {
-        console.error('Failed to resolve summary for record', record.id, e);
+        console.error('🔍 RecordDetailView - Failed to resolve summary for record', record.id, e);
       }
     };
 
@@ -444,14 +694,23 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
 };
 
 function mapSummaryToRecordDetail(existing: any, summary: any): any {
+  console.log('🔍 mapSummaryToRecordDetail - Starting mapping...');
+  console.log('🔍 mapSummaryToRecordDetail - Existing record:', JSON.stringify(existing, null, 2));
+  console.log('🔍 mapSummaryToRecordDetail - Summary data:', JSON.stringify(summary, null, 2));
+  
   // Some backends wrap real data inside a `summary` key. Unwrap if present.
   const s = summary && typeof summary === 'object' && summary.summary ? summary.summary : summary;
+  console.log('🔍 mapSummaryToRecordDetail - Unwrapped summary:', JSON.stringify(s, null, 2));
 
   // Accept multiple backend shapes: labor, laborData, labor_data
   const laborSrcRaw = (s.labor || s.laborData || s.labor_data || {}) as any;
+  console.log('🔍 mapSummaryToRecordDetail - Raw labor source:', JSON.stringify(laborSrcRaw, null, 2));
+  
   // Case-insensitive role keys and common variants
   const roleMap: any = {};
   for (const k of Object.keys(laborSrcRaw)) roleMap[k.toLowerCase()] = (laborSrcRaw as any)[k];
+  console.log('🔍 mapSummaryToRecordDetail - Role map:', JSON.stringify(roleMap, null, 2));
+  
   const laborSrc: any = {
     manager: roleMap['manager'],
     foreman: roleMap['foreman'],
@@ -459,10 +718,15 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
     skillLaborer: roleMap['skilllaborer'] || roleMap['skill_laborer'] || roleMap['skilledlaborer'] || roleMap['skilled_laborer'],
     carpenterExtra: roleMap['carpenterextra'] || roleMap['carpenter_extra'] || roleMap['carpenter (extra)'],
   };
+  console.log('🔍 mapSummaryToRecordDetail - Processed labor source:', JSON.stringify(laborSrc, null, 2));
 
   const subcontractorsSrc = s.subcontractors || s.subcontractor || {};
   const materialsSrc = s.materialsDeliveries || s.materials || {};
   const equipmentSrc = s.equipment || {};
+  
+  console.log('🔍 mapSummaryToRecordDetail - Subcontractors source:', JSON.stringify(subcontractorsSrc, null, 2));
+  console.log('🔍 mapSummaryToRecordDetail - Materials source:', JSON.stringify(materialsSrc, null, 2));
+  console.log('🔍 mapSummaryToRecordDetail - Equipment source:', JSON.stringify(equipmentSrc, null, 2));
 
 const mapped = {
     ...existing,
@@ -494,6 +758,8 @@ const mapped = {
   } as any;
 
   // Normalize labor rows to ensure hours is computed when missing
+  console.log('🔍 mapSummaryToRecordDetail - Before labor normalization:', JSON.stringify(mapped.laborData, null, 2));
+  
   mapped.laborData = {
     manager: normalizeLaborRow(mapped.laborData.manager),
     foreman: normalizeLaborRow(mapped.laborData.foreman),
@@ -501,6 +767,9 @@ const mapped = {
     skillLaborer: normalizeLaborRow(mapped.laborData.skillLaborer),
     carpenterExtra: normalizeLaborRow(mapped.laborData.carpenterExtra),
   };
+  
+  console.log('🔍 mapSummaryToRecordDetail - After labor normalization:', JSON.stringify(mapped.laborData, null, 2));
+  console.log('🔍 mapSummaryToRecordDetail - Final mapped result:', JSON.stringify(mapped, null, 2));
 
   return mapped;
 }
@@ -898,6 +1167,24 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#FF9500',
     fontWeight: '700',
+  },
+  noDataContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  noDataTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 10,
+  },
+  noDataMessage: {
+    fontSize: 16,
+    color: '#8E8E93',
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
 

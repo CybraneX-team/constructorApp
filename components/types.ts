@@ -1,4 +1,5 @@
 import Animated from 'react-native-reanimated';
+import { ProcessedJobProgress } from '../services/jobProgressService';
 
 export interface Memo {
   id: string;
@@ -14,6 +15,7 @@ export interface RecordDetail {
   duration: string;
   date: string;
   jobNumber: string;
+  structuredSummary?: any; // Optional field for structured summary data
   laborData: {
     manager: { startTime: string; finishTime: string; hours: string; rate: string; total: string };
     foreman: { startTime: string; finishTime: string; hours: string; rate: string; total: string };
@@ -74,4 +76,5 @@ export interface CircularProgressProps {
   handleCircleClick: (newIndex: number) => void;
   handleSearchPress?: () => void;
   onShowWorkProgressModal?: () => void;
+  workProgress?: ProcessedJobProgress;
 }

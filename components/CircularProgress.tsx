@@ -79,6 +79,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   handleCircleClick,
   handleSearchPress,
   onShowWorkProgressModal,
+  workProgress,
 }) => {
   const sizes = getResponsiveSizes();
   const size = isMain ? sizes.mainSize : sizes.baseSize;
@@ -223,6 +224,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
                 liveTranscription={liveTranscription}
                 sizes={sizes}
                 onShowWorkProgressModal={onShowWorkProgressModal}
+                workProgress={workProgress}
               />
             ) : index === 1 ? (
               // Access Records button for Record Book circle
@@ -581,6 +583,7 @@ interface WorkProgressTransitionProps {
   liveTranscription: string;
   sizes: any;
   onShowWorkProgressModal?: () => void;
+  workProgress?: ProcessedJobProgress;
 }
 
 const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
@@ -589,15 +592,16 @@ const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
   liveTranscription,
   sizes,
   onShowWorkProgressModal,
+  workProgress,
 }) => {
   const workProgressOpacity = useSharedValue(1);
   const transcriptionOpacity = useSharedValue(0);
   const savingOpacity = useSharedValue(0);
   const infoButtonOpacity = useSharedValue(1);
   
-  // Static work progress data (this will be replaced with real-time data from parent)
-  const workProgress = {
-    completion: 0,
+  // Use real work progress data or fallback to defaults
+  const progressData = workProgress || {
+    overallProgress: 0,
     tasksCompleted: 0,
     totalTasks: 0,
     remainingTasks: []
@@ -677,15 +681,15 @@ return (
           
           {/* Enhanced Progress Ring */}
           <View style={workProgressStyles.progressRingContainer}>
-            <ProgressCircle completion={workProgress.completion} />
+            <ProgressCircle completion={progressData.overallProgress} />
             <Text style={[workProgressStyles.progressText, { fontSize: sizes.fontSize.duration }]}>
-              {workProgress.completion}%
+              {progressData.overallProgress}%
             </Text>
           </View>
           
           <View style={workProgressStyles.statsContainer}>
             <Text style={[workProgressStyles.statusText, { fontSize: sizes.fontSize.transcription }]}>
-              {workProgress.tasksCompleted}/{workProgress.totalTasks} tasks completed
+              {progressData.tasksCompleted}/{progressData.totalTasks} tasks completed
             </Text>
           </View>
         </View>

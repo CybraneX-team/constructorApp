@@ -32,7 +32,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
   loading = false,
   jobNumber = 'CFX 417-151', // Default job number
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'categories'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks'>('overview');
   const [localLoading, setLocalLoading] = useState(false);
   const [localProgress, setLocalProgress] = useState<ProcessedJobProgress | null>(null);
   const { token } = useAuth();
@@ -64,7 +64,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
     try {
       // Resolve base URL from centralized config
       const baseUrl = (API_CONFIG?.BASE_URL || '').replace(/\/$/, '') || 'http://13.203.216.38:3000';
-      const url = `${baseUrl}/job/${encodeURIComponent(jobNumber)}/progress`;
+      const url = `${baseUrl}/progress?jobNumber=${encodeURIComponent(jobNumber)}`;
       
       const headers: Record<string, string> = { 'Accept': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -77,35 +77,42 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          // Transform the API response to match our ProcessedJobProgress interface
+          console.log('🔍 WorkProgressModal - API Response:', data);
+          
+          // Use the actual API response structure
           const transformedData: ProcessedJobProgress = {
-            overallProgress: data.overallProgress || 0,
-            tasksCompleted: data.summary?.completedTasks || 0,
-            totalTasks: data.summary?.totalTasks || 0,
-            inProgressTasks: data.summary?.inProgressTasks || 0,
+            overallProgress: data.progress?.completionPercentage || 0,
+            tasksCompleted: data.progress?.tasksCompleted || 0,
+            totalTasks: data.progress?.totalTasks || 0,
+            inProgressTasks: 0, // API doesn't provide in-progress count
             remainingTasks: [],
             allTasks: [],
-            lastUpdated: data.lastUpdated || new Date().toISOString(),
-            categories: data.categories || {},
+            lastUpdated: new Date().toISOString(),
+            categories: {},
           };
 
-          // Transform tasks
-          if (data.tasks) {
+          // Transform taskDetails to tasks
+          if (data.taskDetails) {
             const allTasks: JobTask[] = [];
-            if (data.tasks.completed) {
-              allTasks.push(...data.tasks.completed.map((task: any) => ({ ...task, status: 'completed' as const })));
-            }
-            if (data.tasks.inProgress) {
-              allTasks.push(...data.tasks.inProgress.map((task: any) => ({ ...task, status: 'in_progress' as const })));
-            }
-            if (data.tasks.notStarted) {
-              allTasks.push(...data.tasks.notStarted.map((task: any) => ({ ...task, status: 'not_started' as const })));
-            }
-
+            Object.entries(data.taskDetails).forEach(([category, isCompleted]) => {
+              const task: JobTask = {
+                category: formatCategoryName(category),
+                task: `${formatCategoryName(category)} tasks`,
+                status: isCompleted ? 'completed' as const : 'not_started' as const,
+                completionPercentage: isCompleted ? 100 : 0,
+                evidence: [],
+              };
+              
+              allTasks.push(task);
+              if (!isCompleted) {
+                transformedData.remainingTasks.push(task);
+              }
+            });
+            
             transformedData.allTasks = allTasks;
-            transformedData.remainingTasks = allTasks.filter(task => task.status !== 'completed');
           }
 
+          console.log('🔍 WorkProgressModal - Transformed Data:', transformedData);
           setLocalProgress(transformedData);
         } else {
           console.error('Progress API returned success:false', data);
@@ -119,6 +126,14 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
     } finally {
       setLocalLoading(false);
     }
+  };
+
+  // Helper function to format category names
+  const formatCategoryName = (category: string): string => {
+    return category
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .replace('Labour', 'Labor');
   };
 
   const formatLastUpdated = (dateString: string) => {
@@ -140,14 +155,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
     }
   };
 
-  const getStatusText = (status: string, completionPercentage?: number) => {
-    switch (status) {
-      case 'completed': return 'Completed';
-      case 'in_progress': return `${completionPercentage || 0}% Complete`;
-      case 'not_started': return 'Not Started';
-      default: return 'Unknown';
-    }
-  };
+
 
   const renderTaskItem = (task: JobTask, index: number) => (
     <View key={index} style={styles.taskItem}>
@@ -155,7 +163,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
       <View style={styles.taskContent}>
         <Text style={styles.taskTitle}>{task.task}</Text>
         <Text style={[styles.taskStatus, { color: getStatusColor(task.status) }]}>
-          {getStatusText(task.status, task.completionPercentage)}
+          {task.status === 'completed' ? '✅ Completed' : '❌ Not Completed'}
         </Text>
         <Text style={styles.taskCategory}>Category: {task.category}</Text>
         {task.evidence && task.evidence.length > 0 && (
@@ -167,23 +175,10 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
     </View>
   );
 
-  const renderCategoryItem = (name: string, data: any) => (
-    <View key={name} style={styles.categoryItem}>
-      <View style={styles.categoryHeader}>
-        <Text style={styles.categoryName}>{name}</Text>
-        <Text style={styles.categoryPercentage}>{data.progressPercentage}%</Text>
-      </View>
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: `${data.progressPercentage}%` }]} />
-      </View>
-      <Text style={styles.categoryStats}>
-        {data.completedTasks}/{data.totalTasks} tasks completed
-      </Text>
-    </View>
-  );
 
-  // Use local progress data if available, otherwise fall back to props
-  const currentProgress = localProgress || workProgress;
+
+  // Use local progress data if available, otherwise show loading
+  const currentProgress = localProgress;
   const isLoading = localLoading || loading;
 
   if (!visible) return null;
@@ -199,7 +194,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
             <View style={styles.headerContent}>
               <Text style={styles.title}>Work Progress</Text>
               <Text style={styles.subtitle}>
-                Job: {jobNumber} • Last updated: {formatLastUpdated(currentProgress.lastUpdated)}
+                Job: {jobNumber} • Last updated: {currentProgress ? formatLastUpdated(currentProgress.lastUpdated) : 'Loading...'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -209,7 +204,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
 
           {/* Tabs */}
           <View style={styles.tabContainer}>
-            {['overview', 'tasks', 'categories'].map((tab) => (
+            {['overview', 'tasks'].map((tab) => (
               <TouchableOpacity
                 key={tab}
                 style={[styles.tab, activeTab === tab && styles.activeTab]}
@@ -224,7 +219,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
 
           {/* Content */}
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {isLoading ? (
+            {isLoading || !currentProgress ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#000000" />
                 <Text style={styles.loadingText}>Loading progress...</Text>
@@ -244,8 +239,8 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                         <Text style={styles.statLabel}>Completed</Text>
                       </View>
                       <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{currentProgress.inProgressTasks}</Text>
-                        <Text style={styles.statLabel}>In Progress</Text>
+                        <Text style={styles.statNumber}>{currentProgress.totalTasks - currentProgress.tasksCompleted}</Text>
+                        <Text style={styles.statLabel}>Remaining</Text>
                       </View>
                     </View>
 
@@ -253,9 +248,9 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                       {currentProgress.tasksCompleted} of {currentProgress.totalTasks} tasks completed
                     </Text>
                     
-                    {currentProgress.inProgressTasks > 0 && (
+                    {currentProgress.totalTasks > 0 && (
                       <Text style={styles.inProgressText}>
-                        {currentProgress.inProgressTasks} tasks currently in progress
+                        {currentProgress.totalTasks - currentProgress.tasksCompleted} tasks remaining
                       </Text>
                     )}
                   </View>
@@ -287,16 +282,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                   </View>
                 )}
 
-                {activeTab === 'categories' && (
-                  <View>
-                    <Text style={styles.sectionTitle}>Progress by Category</Text>
-                    <View style={styles.categoriesList}>
-                      {Object.entries(currentProgress.categories || {}).map(([name, data]) => 
-                        renderCategoryItem(name, data)
-                      )}
-                    </View>
-                  </View>
-                )}
+
               </>
             )}
           </ScrollView>
@@ -315,7 +301,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
           <View style={styles.headerContent}>
             <Text style={styles.title}>Work Progress</Text>
             <Text style={styles.subtitle}>
-              Job: {jobNumber} • Last updated: {formatLastUpdated(currentProgress.lastUpdated)}
+              Job: {jobNumber} • Last updated: {currentProgress ? formatLastUpdated(currentProgress.lastUpdated) : 'Loading...'}
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -325,7 +311,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
 
         {/* Tabs */}
         <View style={styles.tabContainer}>
-          {['overview', 'tasks', 'categories'].map((tab) => (
+          {['overview', 'tasks'].map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.tab, activeTab === tab && styles.activeTab]}
@@ -340,7 +326,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
 
         {/* Content */}
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {isLoading ? (
+          {isLoading || !currentProgress ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#000000" />
               <Text style={styles.loadingText}>Loading progress...</Text>
@@ -360,8 +346,8 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                       <Text style={styles.statLabel}>Completed</Text>
                     </View>
                     <View style={styles.statItem}>
-                      <Text style={styles.statNumber}>{currentProgress.inProgressTasks}</Text>
-                      <Text style={styles.statLabel}>In Progress</Text>
+                      <Text style={styles.statNumber}>{currentProgress.totalTasks - currentProgress.tasksCompleted}</Text>
+                      <Text style={styles.statLabel}>Remaining</Text>
                     </View>
                   </View>
 
@@ -369,9 +355,9 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                     {currentProgress.tasksCompleted} of {currentProgress.totalTasks} tasks completed
                   </Text>
                   
-                  {currentProgress.inProgressTasks > 0 && (
+                  {currentProgress.totalTasks > 0 && (
                     <Text style={styles.inProgressText}>
-                      {currentProgress.inProgressTasks} tasks currently in progress
+                      {currentProgress.totalTasks - currentProgress.tasksCompleted} tasks remaining
                     </Text>
                   )}
                 </View>
@@ -403,16 +389,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                 </View>
               )}
 
-              {activeTab === 'categories' && (
-                <View>
-                  <Text style={styles.sectionTitle}>Progress by Category</Text>
-                  <View style={styles.categoriesList}>
-                    {Object.entries(currentProgress.categories || {}).map(([name, data]) => 
-                      renderCategoryItem(name, data)
-                    )}
-                  </View>
-                </View>
-              )}
+
             </>
           )}
         </ScrollView>
