@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, Platform, Vibration } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 interface ModalStackItem {
   id: string;
@@ -14,6 +15,15 @@ interface ModalStackContextType {
   getModalCount: () => number;
   closeTopModal: () => boolean; // Returns true if a modal was closed
 }
+
+// Helper function for cross-platform back navigation haptic feedback
+const triggerBackHaptic = () => {
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } else if (Platform.OS === 'android') {
+    Vibration.vibrate(30); // Short vibration for back navigation
+  }
+};
 
 const ModalStackContext = createContext<ModalStackContextType | undefined>(undefined);
 
@@ -64,6 +74,10 @@ export const ModalStackProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (modalStack.length > 0) {
       const topModal = modalStack[0]; // Highest priority modal
       console.log(`📱 Closing top modal: ${topModal.id}`);
+      
+      // Trigger haptic feedback for modal closing
+      triggerBackHaptic();
+      
       topModal.onClose();
       return true;
     }
@@ -76,6 +90,10 @@ export const ModalStackProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (modalStack.length > 0) {
       const topModal = modalStack[0];
       console.log(`📱 Closing modal: ${topModal.id}`);
+      
+      // Trigger haptic feedback for back navigation
+      triggerBackHaptic();
+      
       topModal.onClose();
       return true; // Prevent default back behavior
     }

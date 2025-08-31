@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { customAlert } from '../services/customAlertService';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/apiConfig';
 import { Colors } from '../constants/Colors';
@@ -21,7 +22,7 @@ const NetworkTest: React.FC = () => {
       });
       
       setConnectionStatus('✅ Connected successfully');
-      Alert.alert('Success', 'Successfully connected to backend!');
+              customAlert.success('Success', 'Successfully connected to backend!');
     } catch (error: any) {
       console.error('Connection test failed:', error);
       
@@ -35,7 +36,7 @@ const NetworkTest: React.FC = () => {
       }
       
       setConnectionStatus(errorMessage);
-      Alert.alert('Connection Test Failed', errorMessage);
+              customAlert.error('Connection Test Failed', errorMessage);
     } finally {
       setIsTestingConnection(false);
     }

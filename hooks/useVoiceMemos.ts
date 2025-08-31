@@ -1,6 +1,7 @@
 import { AudioRecorder, setAudioModeAsync, useAudioRecorder, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Dimensions } from 'react-native';
+import { Alert, Dimensions, Platform, Vibration } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import {
   runOnJS,
   useAnimatedGestureHandler,
@@ -13,17 +14,31 @@ import { Memo, RecordDetail } from '../components/types';
 import { recordingService } from '../services/recordingService';
 import { initialMemos } from '../utils/recordsData';
 import { useAuth } from '../contexts/AuthContext';
-// Removed expo-av (deprecated). We compute duration via recorder status with a brief delay
+import { useSite } from '../contexts/SiteContext';
+
 // and fall back to estimating from file size and configured bit rate.
 
 const screenHeight = Dimensions.get('window').height;
 
+// Helper function for circle change haptic feedback
+const triggerCircleChangeHaptic = () => {
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } else if (Platform.OS === 'android') {
+    Vibration.vibrate(25); // Very subtle vibration for circle change
+  }
+};
+
 export const useVoiceMemos = (options?: { 
   onUploadSuccess?: (message: string) => void;
   onRefreshProgress?: () => Promise<void>;
+  cachedRecordingsData?: any[];
 }) => {
   // Get authentication context
   const { token } = useAuth();
+  
+  // Get selected site context
+  const { selectedSite } = useSite();
   
   // Initialize audio recorder at the top level (following Rules of Hooks)
   const audioRecorder = useAudioRecorder({
@@ -90,16 +105,28 @@ export const useVoiceMemos = (options?: {
     if (!token) return;
     try {
       console.log('📂 Fetching recordings with token:', token ? 'present' : 'missing');
+      console.log('📂 Selected site:', selectedSite?.name, 'SiteId:', selectedSite?.siteId);
+      
       const res = await recordingService.getAllRecordings(token);
       console.log('📂 API response:', res);
       
-              if (res.success) {
-          // The backend returns 'dayRecordings', not 'recordings'
-          const dayRecordings = res.dayRecordings || res.recordings || [];
-          const mapped = dayRecordings.map(mapBackendRecordingToListItem);
-          console.log('📂 Mapped dayRecordings:', mapped);
-          console.log('📂 Records count:', mapped.length);
-          setRecordsList(mapped);
+      if (res.success) {
+        // The backend returns 'dayRecordings', not 'recordings'
+        const dayRecordings = res.dayRecordings || res.recordings || [];
+        
+        // Filter recordings by selected site's job number
+        const filteredRecordings = selectedSite?.siteId 
+          ? dayRecordings.filter((recording: any) => recording.jobNumber === selectedSite.siteId)
+          : [];
+        
+        console.log('📂 Total recordings from API:', dayRecordings.length);
+        console.log('📂 Filtered recordings for site', selectedSite?.siteId, ':', filteredRecordings.length);
+        
+        const mapped = filteredRecordings.map(mapBackendRecordingToListItem);
+        console.log('📂 Mapped dayRecordings:', mapped);
+        console.log('📂 Records count:', mapped.length);
+        
+        setRecordsList(mapped);
       } else {
         console.error('📂 Failed to fetch recordings:', res.error);
         setRecordsList([]);
@@ -108,11 +135,30 @@ export const useVoiceMemos = (options?: {
       console.error('📂 Failed to load recordings:', e);
       setRecordsList([]);
     }
-  }, [token]);
+  }, [token, selectedSite]);
 
   useEffect(() => {
     fetchRecordings();
   }, [fetchRecordings]);
+
+  // Initialize recordings from cache if available (for first load)
+  useEffect(() => {
+    if (options?.cachedRecordingsData && options.cachedRecordingsData.length > 0 && recordsList.length === 0) {
+      console.log('📦 Initializing recordings from cache in useVoiceMemos:', options.cachedRecordingsData.length, 'items');
+      setRecordsList(options.cachedRecordingsData);
+    }
+  }, [options?.cachedRecordingsData, recordsList.length]);
+
+  // Refetch recordings when selected site changes
+  useEffect(() => {
+    if (selectedSite?.siteId) {
+      console.log('📂 Selected site changed, refetching recordings for:', selectedSite.siteId);
+      fetchRecordings();
+    } else {
+      console.log('📂 No site selected, clearing recordings');
+      setRecordsList([]);
+    }
+  }, [selectedSite?.siteId, fetchRecordings]);
 
   // Get current title based on active circle and recording state
   const getCurrentTitle = () => {
@@ -174,6 +220,7 @@ export const useVoiceMemos = (options?: {
   // Function to change index
   const changeIndex = (newIndex: number) => {
     if (newIndex !== currentIndex && !isTransitioning.value) {
+      // Note: Haptic feedback is handled by the calling function (pan gesture handler)
       isTransitioning.value = true;
       setCurrentIndex(newIndex);
       animateCirclesToNewPositions(newIndex);
@@ -186,6 +233,7 @@ export const useVoiceMemos = (options?: {
   // Function for smooth circle click transitions
   const handleCircleClick = (newIndex: number) => {
     if (newIndex !== currentIndex && !isTransitioning.value) {
+      triggerCircleChangeHaptic(); // Add subtle haptic feedback for circle change
       isTransitioning.value = true;
       setCurrentIndex(newIndex);
       animateCirclesToNewPositions(newIndex);
@@ -220,6 +268,7 @@ export const useVoiceMemos = (options?: {
       translateY.value = 0;
       
       if (newIndex !== currentIndex) {
+        runOnJS(triggerCircleChangeHaptic)(); // Add haptic feedback for swipe navigation
         runOnJS(changeIndex)(newIndex);
       }
     },
@@ -229,7 +278,7 @@ export const useVoiceMemos = (options?: {
   const handleAccessRecords = async () => {
     console.log('📂 handleAccessRecords called, current showRecordsList:', showRecordsList);
     console.log('📂 Current recordsList length:', recordsList.length);
-    
+
     if (!showRecordsList) {
       console.log('📂 Setting showRecordsList to true immediately');
       setShowRecordsList(true);
@@ -433,9 +482,12 @@ export const useVoiceMemos = (options?: {
         const generatedTitle = `${prefix}_${nextIdx}`;
 
         // Proceed with upload using JSON path so we can include computed duration explicitly
+        const jobNumber = selectedSite?.siteId || 'CFX 417-151';
+        console.log('🎙️ Creating recording with job number:', jobNumber, 'from site:', selectedSite?.name);
+        
         const uploadResult = await recordingService.uploadRecordingAsJSON(audioRecorder, {
           title: generatedTitle,
-          jobNumber: 'CFX 417-151', // TODO: source from context
+          jobNumber: jobNumber, // Use selected site's siteId as job number
           type: 'Voice Memo',
           transcription: liveTranscription || undefined,
           durationOverrideMs: actualDurationMs,
@@ -510,9 +562,12 @@ export const useVoiceMemos = (options?: {
       const nextIdx = getNextDailyIndex(prefix);
       const generatedTitle = `${prefix}_${nextIdx}`;
 
+      const jobNumber = selectedSite?.siteId || 'CFX 417-151';
+      console.log('🎙️ Uploading recording with job number:', jobNumber, 'from site:', selectedSite?.name);
+      
       const result = await recordingService.uploadRecordingAsJSON(recordingToUpload, {
         title: generatedTitle,
-        jobNumber: 'CFX 417-151', // This should come from app context/settings
+        jobNumber: jobNumber, // Use selected site's siteId as job number
         type: 'Voice Memo',
         transcription: liveTranscription || undefined,
       }, token || undefined);
@@ -729,7 +784,7 @@ function mapBackendRecordingToListItem(dayRecording: any) {
   
   // Format date for display
   const dateStr = dayRecording.date || structuredSummary.date || new Date().toLocaleDateString();
-  
+
   return {
     id: dayRecording.id || `day_${Date.now()}`,
     title: title,
@@ -742,6 +797,8 @@ function mapBackendRecordingToListItem(dayRecording: any) {
     recordingCount: dayRecording.recordingCount || 0,
     totalFileSize: dayRecording.totalFileSize || 0,
     consolidatedSummary: dayRecording.consolidatedSummary || '',
+    images: dayRecording.images || [], // Include images from backend
+    imageCount: dayRecording.imageCount || 0,
   };
 }
 
@@ -753,6 +810,7 @@ function createEmptyRecordDetailFromListItem(item: any): RecordDetail {
     date: item?.date || new Date().toLocaleString(),
     jobNumber: item?.jobNumber || '-',
     structuredSummary: item?.structuredSummary, // Include the structuredSummary data
+    images: item?.images || [], // Include images from backend
     laborData: {
       manager: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },
       foreman: { startTime: '', finishTime: '', hours: '0.00', rate: '$-', total: '$-' },

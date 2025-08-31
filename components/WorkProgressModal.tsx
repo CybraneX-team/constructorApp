@@ -9,7 +9,10 @@ import {
   ScrollView,
   ActivityIndicator,
   BackHandler,
+  Vibration,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { ProcessedJobProgress, JobTask } from '../services/jobProgressService';
 import { Colors } from '../constants/Colors';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,7 +25,19 @@ interface WorkProgressModalProps {
   onRefresh?: () => void;
   loading?: boolean;
   jobNumber?: string;
+  modalScale?: any;
+  modalOpacity?: any;
+  backdropOpacity?: any;
 }
+
+// Helper function for cross-platform back navigation haptic feedback
+const triggerBackHaptic = () => {
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } else if (Platform.OS === 'android') {
+    Vibration.vibrate(30); // Short vibration for back navigation
+  }
+};
 
 const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
   visible,
@@ -31,6 +46,9 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
   onRefresh,
   loading = false,
   jobNumber = 'CFX 417-151', // Default job number
+  modalScale,
+  modalOpacity,
+  backdropOpacity,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'tasks'>('overview');
   const [localLoading, setLocalLoading] = useState(false);
@@ -41,6 +59,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (visible) {
+        triggerBackHaptic();
         onClose();
         return true; // Prevent default back behavior
       }
@@ -50,83 +69,25 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
     return () => backHandler.remove();
   }, [visible, onClose]);
 
-  // Fetch progress data when modal becomes visible
+  // Use the workProgress prop instead of fetching separate data
   useEffect(() => {
-    if (visible && jobNumber) {
-      // Reset local progress to force refresh
-      setLocalProgress(null);
-      fetchProgressData();
+    if (visible && workProgress) {
+      console.log('🔄 WorkProgressModal received workProgress prop:', workProgress);
+      setLocalProgress(workProgress);
     }
-  }, [visible, jobNumber]);
+  }, [visible, workProgress]);
 
-  const fetchProgressData = async () => {
-    setLocalLoading(true);
-    try {
-      // Resolve base URL from centralized config
-      const baseUrl = (API_CONFIG?.BASE_URL || '').replace(/\/$/, '') || 'http://13.203.216.38:3000';
-      const url = `${baseUrl}/progress?jobNumber=${encodeURIComponent(jobNumber)}`;
-      
-      const headers: Record<string, string> = { 'Accept': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Create animated styles for the modal
+  const animatedModalStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: modalScale?.value || 1 }],
+    opacity: modalOpacity?.value || 1,
+  }));
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-      });
+  const animatedBackdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity?.value || 0,
+  }));
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          console.log('🔍 WorkProgressModal - API Response:', data);
-          
-          // Use the actual API response structure
-          const transformedData: ProcessedJobProgress = {
-            overallProgress: data.progress?.completionPercentage || 0,
-            tasksCompleted: data.progress?.tasksCompleted || 0,
-            totalTasks: data.progress?.totalTasks || 0,
-            inProgressTasks: 0, // API doesn't provide in-progress count
-            remainingTasks: [],
-            allTasks: [],
-            lastUpdated: new Date().toISOString(),
-            categories: {},
-          };
 
-          // Transform taskDetails to tasks
-          if (data.taskDetails) {
-            const allTasks: JobTask[] = [];
-            Object.entries(data.taskDetails).forEach(([category, isCompleted]) => {
-              const task: JobTask = {
-                category: formatCategoryName(category),
-                task: `${formatCategoryName(category)} tasks`,
-                status: isCompleted ? 'completed' as const : 'not_started' as const,
-                completionPercentage: isCompleted ? 100 : 0,
-                evidence: [],
-              };
-              
-              allTasks.push(task);
-              if (!isCompleted) {
-                transformedData.remainingTasks.push(task);
-              }
-            });
-            
-            transformedData.allTasks = allTasks;
-          }
-
-          console.log('🔍 WorkProgressModal - Transformed Data:', transformedData);
-          setLocalProgress(transformedData);
-        } else {
-          console.error('Progress API returned success:false', data);
-        }
-      } else {
-        const text = await response.text();
-        console.error('Progress API HTTP error', response.status, text);
-      }
-    } catch (error) {
-      console.error('Failed to fetch progress data:', error);
-    } finally {
-      setLocalLoading(false);
-    }
-  };
 
   // Helper function to format category names
   const formatCategoryName = (category: string): string => {
@@ -163,7 +124,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
       <View style={styles.taskContent}>
         <Text style={styles.taskTitle}>{task.task}</Text>
         <Text style={[styles.taskStatus, { color: getStatusColor(task.status) }]}>
-          {task.status === 'completed' ? '✅ Completed' : '❌ Not Completed'}
+          {task.status === 'completed' ? 'Completed' : 'Not Completed'}
         </Text>
         <Text style={styles.taskCategory}>Category: {task.category}</Text>
         {task.evidence && task.evidence.length > 0 && (
@@ -179,7 +140,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
 
   // Use local progress data if available, otherwise show loading
   const currentProgress = localProgress;
-  const isLoading = localLoading || loading;
+  const isLoading = !localProgress || loading;
 
   if (!visible) return null;
 
@@ -187,8 +148,8 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
   if (Platform.OS === 'android') {
     return (
       <View style={styles.inlineOverlay} pointerEvents="box-none">
-        <TouchableOpacity style={styles.backdropTouchable} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.container, styles.androidContainer]}>
+        <Animated.View style={[styles.backdropTouchable, animatedBackdropStyle]} />
+        <Animated.View style={[styles.container, styles.androidContainer, animatedModalStyle]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
@@ -281,12 +242,10 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
                     </View>
                   </View>
                 )}
-
-
               </>
             )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     );
   }
@@ -294,8 +253,8 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
   // iOS: use absolute positioned overlay
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.container}>
+      <TouchableOpacity style={[styles.backdrop, animatedBackdropStyle]} activeOpacity={1} onPress={onClose} />
+      <Animated.View style={[styles.container, animatedModalStyle]}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
@@ -393,7 +352,7 @@ const WorkProgressModal: React.FC<WorkProgressModalProps> = ({
             </>
           )}
         </ScrollView>
-      </View>
+      </Animated.View>
     </View>
   );
 };
@@ -437,16 +396,16 @@ const styles = StyleSheet.create({
   },
   container: {
     position: 'absolute',
-    left: '5%',
-    right: '5%',
-    top: '10%',
+    left: '0%',
+    right: '0%',
+    top: '8%',
     bottom: '10%',
-    backgroundColor: '#F2F2F7',
-    borderRadius: Platform.OS === 'ios' ? 30 : 20,
+    backgroundColor: '#fff',
+    borderRadius: Platform.OS === 'ios' ? 50 : 30,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
     elevation: 20,
   },
   androidContainer: {
@@ -602,6 +561,7 @@ const styles = StyleSheet.create({
   },
   tasksList: {
     gap: 12,
+    marginBottom: 20,
   },
   taskItem: {
     flexDirection: 'row',

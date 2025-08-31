@@ -7,9 +7,10 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
-  Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { customAlert } from '../services/customAlertService';
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -327,6 +328,34 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
           </View>
         </Animated.View>
       )}
+
+      {/* Images Section - Only render if has images */}
+      {record.images && record.images.length > 0 && (
+        <Animated.View style={[styles.detailSection, equipmentSectionStyle]}>
+          <Text style={styles.sectionTitle}>SITE PHOTOS</Text>
+          <View style={styles.imagesContainer}>
+            {record.images.map((image: any, index: number) => (
+              <View key={image.id || index} style={styles.imageCard}>
+                <Image 
+                  source={{ uri: image.presignedUrl }} 
+                  style={styles.siteImage}
+                  resizeMode="cover"
+                />
+                <View style={styles.imageInfo}>
+                  <Text style={styles.imageCaption}>
+                    {image.originalName || `Photo ${index + 1}`}
+                  </Text>
+                  {image.customMetadata?.caption && (
+                    <Text style={styles.imageDescription}>
+                      {image.customMetadata.caption}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 };
@@ -618,7 +647,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
       await generateAndSharePDF(resolvedRecord);
     } catch (error) {
       console.error('Error sharing PDF:', error);
-      Alert.alert('Error', 'Failed to share PDF. Please try again.', [{ text: 'OK' }]);
+      customAlert.error('Error', 'Failed to share PDF. Please try again.');
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -630,7 +659,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
       await generateAndDownloadPDF(resolvedRecord);
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      Alert.alert('Error', 'Failed to download PDF. Please try again.', [{ text: 'OK' }]);
+      customAlert.error('Error', 'Failed to download PDF. Please try again.');
     } finally {
       setIsDownloadingPDF(false);
     }
@@ -732,6 +761,7 @@ const mapped = {
     ...existing,
     date: summary.date || s.date || existing.date,
     jobNumber: summary.jobNumber || s.jobNumber || existing.jobNumber,
+    images: existing.images || [], // Preserve images from existing record
     dailyActivities: s.activities?.text || s.activities?.description || s.dailyActivities || s.daily_activities || s.overview || existing.dailyActivities,
     laborData: {
       manager: laborSrc.manager || existing.laborData.manager,
@@ -1167,6 +1197,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#FF9500',
     fontWeight: '700',
+  },
+
+  // Image Styles
+  imagesContainer: {
+    gap: 16,
+  },
+  imageCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  siteImage: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#F2F2F7',
+  },
+  imageInfo: {
+    padding: 16,
+  },
+  imageCaption: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  imageDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
   },
   noDataContainer: {
     flex: 1,

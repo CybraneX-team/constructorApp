@@ -16,6 +16,16 @@ export interface RecordDetail {
   date: string;
   jobNumber: string;
   structuredSummary?: any; // Optional field for structured summary data
+  images?: {
+    id: string;
+    fileName: string;
+    originalName: string;
+    presignedUrl: string;
+    uploadedAt: string;
+    fileSize: number;
+    mimeType: string;
+    customMetadata: any;
+  }[];
   laborData: {
     manager: { startTime: string; finishTime: string; hours: string; rate: string; total: string };
     foreman: { startTime: string; finishTime: string; hours: string; rate: string; total: string };
@@ -77,4 +87,5 @@ export interface CircularProgressProps {
   handleSearchPress?: () => void;
   onShowWorkProgressModal?: () => void;
   workProgress?: ProcessedJobProgress;
+  records?: any[];
 }

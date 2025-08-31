@@ -22,6 +22,7 @@ import Animated, {
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { useAuth } from '../contexts/AuthContext';
 import { recordingService } from '../services/recordingService';
+import EmailModal from './EmailModal';
 
 
 const screenHeight = Dimensions.get("window").height;
@@ -230,6 +231,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   const [isInputMode, setIsInputMode] = useState(false);
   const [isEmailerMode, setIsEmailerMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const inputScale = useSharedValue(1);
@@ -516,7 +518,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   };
 
   const toggleEmailerMode = () => {
-    setIsEmailerMode(!isEmailerMode);
+    setShowEmailModal(true);
   };
 
   const handleRecordStart = () => {
@@ -618,7 +620,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
           <Animated.View style={[styles.chatHeader, headerStyle]}>
             <View style={styles.headerContent}>
               <Text style={styles.emailerModeText}>
-                {isEmailerMode ? "Emailer Mode" : "Chat Mode"}
+                Chat Mode
               </Text>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
@@ -756,21 +758,11 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
                 <View style={styles.emailerModeContainer}>
                   <TouchableOpacity
                     onPress={toggleEmailerMode}
-                    style={[
-                      styles.emailButton,
-                      isEmailerMode
-                        ? styles.emailButtonActive
-                        : styles.emailButtonInactive,
-                    ]}
+                    style={styles.emailButton}
                   >
                     <MaterialCommunityIcons
                       name="email-outline"
-                      style={[
-                        styles.emailIcon,
-                        isEmailerMode
-                          ? styles.emailIconActive
-                          : styles.emailIconInactive,
-                      ]}
+                      style={styles.emailIcon}
                     />
                   </TouchableOpacity>
                   <Text style={styles.emailModeText}>Want to email?</Text>
@@ -780,6 +772,12 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
           </View>
         </KeyboardAvoidingView>
       </Animated.View>
+
+      {/* Email Modal */}
+      <EmailModal
+        isVisible={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+      />
     </View>
   );
 };

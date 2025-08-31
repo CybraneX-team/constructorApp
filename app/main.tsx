@@ -6,8 +6,8 @@ import {
   StatusBar,
   StyleSheet,
   View,
-  Alert,
 } from 'react-native';
+import { customAlert, successHaptic, infoHaptic } from '../services/customAlertService';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import ProtectedRoute from '../components/ProtectedRoute';
@@ -27,13 +27,42 @@ import MediaOptionsModal from '../components/MediaOptionsModal';
 import DescriptionPrompt from '../components/DescriptionPrompt';
 import WorkProgressModal from '../components/WorkProgressModal';
 import { useModalStack } from '../contexts/ModalStackContext';
+import { useSite } from '../contexts/SiteContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useSharedValue, withTiming, withSpring } from 'react-native-reanimated';
 import { useJobProgress } from '../hooks/useJobProgress';
+import { useCircularProgressData } from '../hooks/useCircularProgressData';
 import RefreshOverlay from '../components/RefreshOverlay';
+import InitialLoader from '../components/InitialLoader';
+import { imageService } from '../services/imageService';
 
 const VoiceMemosScreen = () => {
-  // Fetch job progress data - using the same job number as recordings
-  const { jobProgress, loading: jobProgressLoading, error: jobProgressError, refreshProgress } = useJobProgress('CFX 417-151');
+  // Get selected site context
+  const { selectedSite } = useSite();
+  
+  // Get authentication token
+  const { token } = useAuth();
+  
+  // Use new circular progress data hook with caching
+    const {
+    workProgress: todayWorkProgress,
+    recordingsCount,
+    recordingsData: cachedRecordingsData,
+    isLoading: circularProgressLoading,
+    isFirstTime,
+    refreshData: refreshCircularProgress
+  } = useCircularProgressData();
+  
+  // Keep original job progress for other functionality
+  const { jobProgress, loading: jobProgressLoading, error: jobProgressError, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151');
+
+
+  
+  // Log when selected site changes
+  useEffect(() => {
+    console.log('🏗️ Selected site changed:', selectedSite?.name, 'SiteId:', selectedSite?.siteId);
+    console.log('🏗️ Using job number:', selectedSite?.siteId || 'CFX 417-151');
+  }, [selectedSite]);
 
   const {
     isRecording,
@@ -81,56 +110,26 @@ const VoiceMemosScreen = () => {
     fetchRecordings,
   } = useVoiceMemos({ 
     onUploadSuccess: (message: string) => showSuccessToastMessage(message),
-    onRefreshProgress: refreshProgress
+    onRefreshProgress: refreshProgress,
+    cachedRecordingsData: cachedRecordingsData
   });
+
+
 
   const currentTitle = React.useMemo(() => getCurrentTitle(), [getCurrentTitle]);
   const { registerModal, unregisterModal } = useModalStack();
 
-  // Initial data loading when app opens
-  useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        console.log('  Loading initial data...');
-        
-        // Show refresh overlay for initial loading
-        setRefreshMessage('  Loading initial data...');
-        setRefreshSuccess(false);
-        setShowRefreshOverlay(true);
-        
-        // Load work progress and recordings in parallel
-        await Promise.all([
-          refreshProgress(),
-          fetchRecordings()
-        ]);
-        
-        console.log('  Initial data loaded successfully');
-        
-        // Show success state briefly
-        setRefreshMessage('  Data loaded successfully!');
-        setRefreshSuccess(true);
-        
-        // Hide overlay after 1 second
-        setTimeout(() => {
-          setShowRefreshOverlay(false);
-        }, 1000);
-        
-      } catch (error) {
-        console.error('  Failed to load initial data:', error);
-        
-        // Show error state briefly
-        setRefreshMessage('  Failed to load initial data');
-        setRefreshSuccess(false);
-        
-        // Hide overlay after 2 seconds
-        setTimeout(() => {
-          setShowRefreshOverlay(false);
-        }, 2000);
-      }
-    };
+  // Helper function to format category names
+  const formatCategoryName = (category: string): string => {
+    return category
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .replace('Labour', 'Labor');
+  };
 
-    loadInitialData();
-  }, [refreshProgress, fetchRecordings]);
+  // Use cached work progress data from the hook
+
+  // Initial data loading is now handled by useCircularProgressData hook
 
   useEffect(() => {
     console.log(Dimensions.get('window'));
@@ -143,6 +142,8 @@ const VoiceMemosScreen = () => {
   const [showRefreshOverlay, setShowRefreshOverlay] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshSuccess, setRefreshSuccess] = useState(false);
+
+
   
   // Toast state
   const [showToast, setShowToast] = useState(false);
@@ -159,6 +160,25 @@ const VoiceMemosScreen = () => {
   const workProgressModalScale = useSharedValue(0.8);
   const workProgressModalOpacity = useSharedValue(0);
 
+  // Animation effects for WorkProgressModal
+  useEffect(() => {
+    if (showWorkProgressModal) {
+      // Animate modal in
+      workProgressBackdropOpacity.value = withTiming(1, { duration: 300 });
+      workProgressModalScale.value = withSpring(1, {
+        damping: 15,
+        stiffness: 300,
+        overshootClamping: false,
+      });
+      workProgressModalOpacity.value = withTiming(1, { duration: 400 });
+    } else {
+      // Animate modal out
+      workProgressBackdropOpacity.value = withTiming(0, { duration: 200 });
+      workProgressModalScale.value = withTiming(0.8, { duration: 200 });
+      workProgressModalOpacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [showWorkProgressModal]);
+
   const requestPermissions = async () => {
     try {
       console.log('  Requesting camera and media library permissions...');
@@ -170,19 +190,17 @@ const VoiceMemosScreen = () => {
       console.log('  Media library permission status:', lib.status);
       
       if (cam.status !== 'granted') {
-        Alert.alert(
+        customAlert.error(
           'Camera Permission Required',
-          'Please enable camera access in your device settings to take photos.',
-          [{ text: 'OK' }]
+          'Please enable camera access in your device settings to take photos.'
         );
         return false;
       }
       
       if (lib.status !== 'granted') {
-        Alert.alert(
+        customAlert.error(
           'Photos Permission Required', 
-          'Please enable photo library access in your device settings to select images.',
-          [{ text: 'OK' }]
+          'Please enable photo library access in your device settings to select images.'
         );
         return false;
       }
@@ -191,7 +209,7 @@ const VoiceMemosScreen = () => {
       return true;
     } catch (error) {
       console.error('  Error requesting permissions:', error);
-      Alert.alert('Permission Error', 'Failed to request permissions. Please try again.');
+      customAlert.error('Permission Error', 'Failed to request permissions. Please try again.');
       return false;
     }
   };
@@ -209,7 +227,7 @@ const VoiceMemosScreen = () => {
       setShowMediaOptions(true);
     } catch (error) {
       console.error('  Error in openMediaOptions:', error);
-      Alert.alert('Error', 'Failed to open media options. Please try again.');
+      customAlert.error('Error', 'Failed to open media options. Please try again.');
     }
   };
 
@@ -220,10 +238,9 @@ const VoiceMemosScreen = () => {
       // Check if we're on a simulator
       const isSimulator = Platform.OS === 'ios' && __DEV__;
       if (isSimulator) {
-        Alert.alert(
+        customAlert.error(
           'Camera Not Available',
-          'Camera is not available on simulator. Please use a real device to test camera functionality.',
-          [{ text: 'OK' }]
+          'Camera is not available on simulator. Please use a real device to test camera functionality.'
         );
         return;
       }
@@ -246,7 +263,7 @@ const VoiceMemosScreen = () => {
       }
     } catch (e) {
       console.error('  Camera error:', e);
-      Alert.alert('Camera Error', `Failed to open camera: ${e instanceof Error ? e.message : String(e)}`);
+      customAlert.error('Camera Error', `Failed to open camera: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -273,7 +290,7 @@ const VoiceMemosScreen = () => {
       }
     } catch (e) {
       console.error('  Picker error:', e);
-      Alert.alert('Picker Error', `Failed to open image picker: ${e instanceof Error ? e.message : String(e)}`);
+      customAlert.error('Picker Error', `Failed to open image picker: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -282,13 +299,94 @@ const VoiceMemosScreen = () => {
     setShowMediaOptions(false);
   };
 
-  const handleDescriptionSubmit = (desc: string) => {
-    // TODO: persist images+description to backend when endpoint is ready
-    console.log('Images selected:', selectedImages);
-    console.log('Description:', desc);
-    setSelectedImages([]);
-    setShowDescriptionPrompt(false);
-    Alert.alert('Saved', 'Images and description saved.');
+  const handleDescriptionSubmit = async (desc: string) => {
+    try {
+      if (!selectedSite?.siteId) {
+        customAlert.error('No Site Selected', 'Please select a site first to upload images.');
+        setSelectedImages([]);
+        setShowDescriptionPrompt(false);
+        return;
+      }
+
+      if (selectedImages.length === 0) {
+        customAlert.error('No Images', 'No images selected to upload.');
+        setSelectedImages([]);
+        setShowDescriptionPrompt(false);
+        return;
+      }
+
+      console.log('📸 Uploading images for job:', selectedSite.siteId);
+      console.log('📸 Images selected:', selectedImages.length);
+      console.log('📸 Description:', desc);
+
+      // Show loading state
+      setShowDescriptionPrompt(false);
+      setShowRefreshOverlay(true);
+      setRefreshMessage('Uploading images...');
+      setRefreshSuccess(false);
+
+      // Upload each image
+      const uploadPromises = selectedImages.map(async (imageUri, index) => {
+        console.log(`📸 Uploading image ${index + 1}/${selectedImages.length}:`, imageUri);
+        
+        const metadata = {
+          caption: desc,
+          uploadIndex: index + 1,
+          totalImages: selectedImages.length,
+          uploadedAt: new Date().toISOString(),
+        };
+
+        const result = await imageService.uploadImage(
+          imageUri,
+          selectedSite.siteId,
+          metadata,
+          token || undefined
+        );
+
+        if (!result.success) {
+          throw new Error(`Failed to upload image ${index + 1}: ${result.error}`);
+        }
+
+        return result;
+      });
+
+      // Wait for all uploads to complete
+      const results = await Promise.all(uploadPromises);
+      const successfulUploads = results.filter(r => r.success).length;
+
+      console.log('📸 Upload completed:', successfulUploads, 'successful out of', selectedImages.length);
+
+      // Refresh data to include new images
+      await fetchRecordings();
+
+      // Show success message
+      setRefreshMessage(`Successfully uploaded ${successfulUploads} images!`);
+      setRefreshSuccess(true);
+
+      // Clear selected images
+      setSelectedImages([]);
+
+      // Hide overlay after a delay
+      setTimeout(() => {
+        setShowRefreshOverlay(false);
+      }, 2000);
+
+    } catch (error) {
+      console.error('📸 Image upload failed:', error);
+      
+      setRefreshMessage(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setRefreshSuccess(false);
+      
+      // Hide overlay after a delay
+      setTimeout(() => {
+        setShowRefreshOverlay(false);
+      }, 3000);
+
+      customAlert.error(
+        'Upload Failed', 
+        `Failed to upload images: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   };
 
   // Show description prompt with a tiny delay to avoid overlapping with picker closing animation on Android
@@ -298,6 +396,7 @@ const VoiceMemosScreen = () => {
 
   // Show toast message
   const showToastMessage = (message: string) => {
+    infoHaptic(); // Light haptic for info toast
     setToastMessage(message);
     setShowToast(true);
   };
@@ -309,6 +408,7 @@ const VoiceMemosScreen = () => {
 
   // Show success toast
   const showSuccessToastMessage = (message: string) => {
+    successHaptic(); // Success haptic for success toast
     setSuccessMessage(message);
     setShowSuccessToast(true);
   };
@@ -385,35 +485,32 @@ const VoiceMemosScreen = () => {
   // Handle refresh all data
   const handleRefreshAllData = async () => {
     try {
-      console.log('  Refreshing all data...');
+      console.log('🔄 Starting full data refresh...');
       
       // Show refresh overlay
-      setRefreshMessage('  Refreshing data...');
+      setRefreshMessage('  Refreshing all data...');
       setRefreshSuccess(false);
       setShowRefreshOverlay(true);
       
-      // Refresh work progress and recordings in parallel
-      await Promise.all([
-        refreshProgress(),
-        fetchRecordings()
-      ]);
+      // Use the new cache-aware refresh function
+      await refreshCircularProgress();
       
-      console.log('All data refreshed successfully');
+      console.log('🔄 Data refresh completed successfully');
       
-      // Show success state briefly
-      setRefreshMessage('  Data refreshed successfully!');
+      // Show success state
+      setRefreshMessage('  Data refresh completed!');
       setRefreshSuccess(true);
       
-      // Hide overlay after 1.5 seconds
+      // Hide overlay after 1 second
       setTimeout(() => {
         setShowRefreshOverlay(false);
-      }, 1500);
+      }, 1000);
       
     } catch (error) {
-      console.error('  Failed to refresh data:', error);
+      console.error('🔄 Error during data refresh:', error);
       
-      // Show error state briefly
-      setRefreshMessage('  Failed to refresh data');
+      // Show error state
+      setRefreshMessage('  Refresh failed');
       setRefreshSuccess(false);
       
       // Hide overlay after 2 seconds
@@ -432,6 +529,12 @@ const VoiceMemosScreen = () => {
     <ProtectedRoute>
       <GestureHandlerRootView style={styles.container}>
         <View style={styles.container}>
+          {/* Initial Loader for first-time login */}
+          <InitialLoader 
+            isVisible={isFirstTime && circularProgressLoading}
+            message="Loading your workspace..."
+          />
+          
           <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
             <AnimatedTitle
@@ -444,7 +547,7 @@ const VoiceMemosScreen = () => {
                 <Animated.View style={styles.gestureContainer}>
                   {memos.map((memo, index) => (
                     <CircularProgress
-                      key={memo.id}
+                      key={`memo-${memo.id}-${todayWorkProgress?.lastUpdated || 'no-data'}`}
                       memo={memo}
                       index={index}
                       isMain={index === currentIndex}
@@ -462,7 +565,8 @@ const VoiceMemosScreen = () => {
                       handleCircleClick={handleCircleClick}
                       handleSearchPress={handleSearchPress}
                       onShowWorkProgressModal={handleShowWorkProgressModal}
-                      workProgress={jobProgress || undefined}
+                      workProgress={todayWorkProgress}
+                      records={Array(recordingsCount).fill({})} // Use cached count instead of full list
                     />
                   ))}
                 </Animated.View>
@@ -476,6 +580,7 @@ const VoiceMemosScreen = () => {
             onPressOut={handleStopRecording}
             recordButtonScale={recordButtonScale}
             recordButtonOpacity={recordButtonOpacity}
+            visualizerBars={visualizerBars}
             onSearchPress={handleSearchPress}
             onMoveToSearchCircle={handleMoveToSearchCircle}
             onCameraPress={openMediaOptions}
@@ -483,9 +588,9 @@ const VoiceMemosScreen = () => {
           />
 
           {(() => {
-            console.log('📂 Main screen - showRecordsList:', showRecordsList);
-            console.log('📂 Main screen - recordsList length:', recordsList?.length);
-            console.log('📂 Main screen - recordsList:', recordsList);
+            // console.log('📂 Main screen - showRecordsList:', showRecordsList);
+            // console.log('📂 Main screen - recordsList length:', recordsList?.length);
+            // console.log('📂 Main screen - recordsList:', recordsList);
             return showRecordsList && (
               <RecordsList
                 records={recordsList}
@@ -559,20 +664,16 @@ const VoiceMemosScreen = () => {
           
           {/* Work Progress Modal */}
           <WorkProgressModal
+            key={`work-progress-${todayWorkProgress?.lastUpdated || 'no-data'}`}
             visible={showWorkProgressModal}
-            workProgress={jobProgress || {
-              overallProgress: 0,
-              tasksCompleted: 0,
-              totalTasks: 0,
-              inProgressTasks: 0,
-              remainingTasks: [],
-              allTasks: [],
-              lastUpdated: new Date().toISOString(),
-              categories: {},
-            }}
+            workProgress={todayWorkProgress}
             onClose={handleCloseWorkProgressModal}
             onRefresh={refreshProgress}
             loading={jobProgressLoading}
+            jobNumber={selectedSite?.siteId || 'CFX 417-151'}
+            modalScale={workProgressModalScale}
+            modalOpacity={workProgressModalOpacity}
+            backdropOpacity={workProgressBackdropOpacity}
           />
 
           {/* Refresh Overlay */}

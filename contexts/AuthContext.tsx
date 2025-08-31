@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { router } from 'expo-router';
 import axiosInstance from '../utils/axiosConfig';
 import { API_BASE_URL } from '../utils/apiConfig';
 // We'll use this to access site context from inside auth context
@@ -171,16 +172,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
+      console.log('🔄 Logging out user...');
+      
+      // Clear user state immediately
       setUser(null);
       setToken(null);
       
+      // Clear all stored data
       await AsyncStorage.removeItem('authToken');
       await AsyncStorage.removeItem('user');
       
+      // Clear circular progress cache
+      await AsyncStorage.removeItem('circular_progress_cache');
+      await AsyncStorage.removeItem('first_time_login');
+      
       // Remove default authorization header
       delete axios.defaults.headers.common['Authorization'];
+      
+      console.log('✅ Logout completed successfully');
+      
+      // Force immediate redirect to login
+      router.replace('/login');
     } catch (error) {
       console.error('Error during logout:', error);
+      // Even if there's an error, still redirect to login
+      router.replace('/login');
     }
   };
 

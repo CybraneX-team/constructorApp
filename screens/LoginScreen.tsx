@@ -5,7 +5,6 @@ import {
   TextInput, 
   StyleSheet, 
   TouchableOpacity, 
-  Alert, 
   ActivityIndicator, 
   ScrollView,
   Animated,
@@ -14,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { customAlert } from '../services/customAlertService';
 import { router } from 'expo-router';
 import { Colors } from '../constants/Colors';
 import { useAuth } from '../contexts/AuthContext';
@@ -48,7 +48,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
   const handleLogin = async () => {
     if (!email || (!isAdmin && !password) || (isAdmin && !superPassword)) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      customAlert.error('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -67,7 +67,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       }
       router.replace('/site-selection');
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message);
+      customAlert.error('Login Failed', error.message);
     } finally {
       setIsLoading(false);
     }

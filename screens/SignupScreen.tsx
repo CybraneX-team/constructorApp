@@ -5,7 +5,6 @@ import {
   TextInput, 
   StyleSheet, 
   TouchableOpacity, 
-  Alert, 
   ActivityIndicator, 
   ScrollView,
   Animated,
@@ -14,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { customAlert } from '../services/customAlertService';
 import { router } from 'expo-router';
 import { Colors } from '../constants/Colors';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,12 +51,12 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
 
   const handleSignup = async () => {
     if (!email || (!isAdmin && !password) || (isAdmin && (!superPassword || !accessKey))) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      customAlert.error('Error', 'Please fill in all required fields');
       return;
     }
 
     if (isAdmin && accessKey !== ACCESS_KEY) {
-      Alert.alert('Error', 'Invalid access key for admin signup');
+      customAlert.error('Error', 'Invalid access key for admin signup');
       return;
     }
 
@@ -69,10 +69,10 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
     setIsLoading(true);
     try {
       await signup(email, isAdmin ? superPassword : password, isAdmin, isAdmin ? accessKey : undefined);
-      Alert.alert('Success', 'Account created successfully! Please login.');
+      customAlert.success('Success', 'Account created successfully! Please login.');
       router.push('/login');
     } catch (error: any) {
-      Alert.alert('Signup Failed', error.message);
+      customAlert.error('Signup Failed', error.message);
     } finally {
       setIsLoading(false);
     }

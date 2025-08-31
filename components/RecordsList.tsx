@@ -16,6 +16,7 @@ import Animated, {
 import { RecordsListProps } from './types';
 import { recordingService } from '../services/recordingService';
 import { useAuth } from '../contexts/AuthContext';
+import { useSite } from '../contexts/SiteContext';
 
 // Separate component for record item to avoid hook violations
 const RecordItem: React.FC<{
@@ -136,9 +137,12 @@ const RecordsList: React.FC<RecordsListProps> = ({
   backdropOpacity,
   onRecordClick 
 }) => {
+  const { selectedSite } = useSite();
+  
   console.log('📂 RecordsList render - records:', records);
   console.log('📂 RecordsList render - records length:', records?.length);
   console.log('📂 RecordsList render - records type:', typeof records);
+  console.log('📂 RecordsList render - selected site:', selectedSite?.name, 'SiteId:', selectedSite?.siteId);
   
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
@@ -190,9 +194,14 @@ const RecordsList: React.FC<RecordsListProps> = ({
       <Animated.View style={[styles.recordsContainer, listStyle]}>
         <View style={styles.recordsHeader}>
           <View style={styles.headerContent}>
-            <Text style={styles.recordsTitle}>All Recordings</Text>
+            <Text style={styles.recordsTitle}>
+              {selectedSite?.name ? `${selectedSite.name} Recordings` : 'All Recordings'}
+            </Text>
             <Text style={styles.recordsSubtitle}>
-              {isLoading ? 'Loading recordings...' : `${safeRecords.length} recordings available`}
+              {isLoading ? 'Loading recordings...' : 
+               selectedSite?.siteId ? 
+                 `${safeRecords.length} recordings for site ${selectedSite.siteId}` :
+                 `${safeRecords.length} recordings available`}
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -228,7 +237,11 @@ const RecordsList: React.FC<RecordsListProps> = ({
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No recordings found</Text>
-                <Text style={styles.emptySubtext}>Try recording something new!</Text>
+                <Text style={styles.emptySubtext}>
+                  {selectedSite?.siteId ? 
+                    `No recordings available for site "${selectedSite.name}" (${selectedSite.siteId}). Try recording something new!` :
+                    'No recordings available for the selected site. Try recording something new!'}
+                </Text>
               </View>
             )}
           />

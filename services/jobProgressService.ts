@@ -71,7 +71,7 @@ class JobProgressService {
       }
 
       const data: JobProgressResponse = await response.json();
-      console.log('✅ Job progress data received:', data);
+      // console.log('✅ Job progress data received:', data);
       
       if (!data.success) {
         console.error('❌ API returned unsuccessful response:', data);
@@ -79,7 +79,7 @@ class JobProgressService {
       }
 
       const processedData = this.processJobProgressData(data);
-      console.log('✅ Job progress processed:', processedData);
+      // console.log('✅ Job progress processed:', processedData);
       return processedData;
     } catch (error) {
       console.error('❌ Error fetching job progress:', error);

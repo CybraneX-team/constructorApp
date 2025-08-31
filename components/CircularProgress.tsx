@@ -6,19 +6,29 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  Vibration,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
-} from 'react-native-reanimated';
+ useAnimatedProps } from 'react-native-reanimated';
 import { MaterialIcons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { CircularProgressProps } from './types';
-import { useAnimatedProps } from 'react-native-reanimated';
 import { AudioVisualizerBorder } from './AudioVisualizer';
 import { ProcessedJobProgress } from '../services/jobProgressService';
+
+// Helper function for circle change haptic feedback
+const triggerCircleChangeHaptic = () => {
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } else if (Platform.OS === 'android') {
+    Vibration.vibrate(25); // Very subtle vibration for circle change
+  }
+};
 
 // Get screen dimensions for responsive design
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -80,6 +90,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   handleSearchPress,
   onShowWorkProgressModal,
   workProgress,
+  records = [],
 }) => {
   const sizes = getResponsiveSizes();
   const size = isMain ? sizes.mainSize : sizes.baseSize;
@@ -137,6 +148,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
         activeOpacity={1.0}
         onPress={() => {
           if (index !== currentIndex) {
+            triggerCircleChangeHaptic(); // Add subtle haptic feedback for circle change
             handleCircleClick(index);
           }
         }}
@@ -253,9 +265,9 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
                   </TouchableOpacity>
                 </Animated.View>
                 
-                <Text style={[styles.recordsCount, { fontSize: sizes.fontSize.duration }]}>
-                  5 recordings
-                </Text>
+                {/* <Text style={[styles.recordsCount, { fontSize: sizes.fontSize.duration }]}>
+                  {records?.length || 0} recordings
+                </Text> */}
               </View>
             ) : (
               // Search interface for the 3rd circle
@@ -607,6 +619,12 @@ const WorkProgressTransition: React.FC<WorkProgressTransitionProps> = ({
     remainingTasks: []
   };
 
+  // Debug logging for work progress data
+  React.useEffect(() => {
+    // console.log('🔄 CircularProgress received workProgress:', workProgress);
+    // console.log('🔄 CircularProgress using progressData:', progressData);
+  }, [workProgress, progressData]);
+
   React.useEffect(() => {
     if (isRecording) {
       // Recording state: show transcription
@@ -691,6 +709,12 @@ return (
             <Text style={[workProgressStyles.statusText, { fontSize: sizes.fontSize.transcription }]}>
               {progressData.tasksCompleted}/{progressData.totalTasks} tasks completed
             </Text>
+            {/* Show indicator if no progress (no recordings today) */}
+            {progressData.overallProgress === 0 && (
+              <Text style={[workProgressStyles.todayIndicator, { fontSize: sizes.fontSize.transcription - 2 }]}>
+                No recordings today
+              </Text>
+            )}
           </View>
         </View>
       </Animated.View>
@@ -889,6 +913,15 @@ const workProgressStyles = StyleSheet.create({
     lineHeight: 18,
     fontSize: 12,
     letterSpacing: -0.1,
+  },
+  todayIndicator: {
+    color: '#FF3B30',
+    fontWeight: '400',
+    textAlign: 'center',
+    lineHeight: 16,
+    fontSize: 10,
+    marginTop: 4,
+    opacity: 0.8,
   },
 });
 

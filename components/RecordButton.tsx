@@ -1,12 +1,60 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Vibration, Platform } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { AudioVisualizer } from './AudioVisualizer';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../contexts/AuthContext';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { useAudioMonitoring } from '../hooks/useAudioMonitoring';
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+
+// Enhanced helper function for voice-responsive haptic feedback
+const triggerHaptic = (type: 'start' | 'continuous' | 'stop', amplitude?: number) => {
+  if (Platform.OS === 'ios') {
+    switch (type) {
+      case 'start':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        break;
+      case 'continuous':
+        // Use amplitude to determine haptic intensity
+        if (amplitude !== undefined) {
+          if (amplitude > 0.7) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          } else if (amplitude > 0.5) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          } else {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+        } else {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+        break;
+      case 'stop':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        break;
+    }
+  } else if (Platform.OS === 'android') {
+    switch (type) {
+      case 'start':
+        Vibration.vibrate(100); // Short vibration for start
+        break;
+      case 'continuous':
+        // Use amplitude to determine vibration intensity and duration
+        if (amplitude !== undefined) {
+          const intensity = Math.max(10, Math.min(100, amplitude * 150)); // Scale amplitude to vibration duration
+          Vibration.vibrate(intensity);
+        } else {
+          Vibration.vibrate(50); // Default vibration
+        }
+        break;
+      case 'stop':
+        Vibration.vibrate([50, 100, 50]); // Pattern vibration for stop
+        break;
+    }
+  }
+};
 
 interface RecordButtonProps {
   onPress: () => void; // Legacy support - not used for hold-to-record
@@ -14,6 +62,7 @@ interface RecordButtonProps {
   onPressOut?: () => void; // Stop recording when released
   recordButtonScale: Animated.SharedValue<number>;
   recordButtonOpacity: Animated.SharedValue<number>;
+  visualizerBars?: Animated.SharedValue<number>[]; // Audio amplitude data for voice-responsive haptics
   onSearchPress?: () => void;
   onMoveToSearchCircle?: () => void;
   onCameraPress?: () => void;
@@ -26,6 +75,7 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   onPressOut,
   recordButtonScale,
   recordButtonOpacity,
+  visualizerBars,
   onSearchPress,
   onMoveToSearchCircle,
   onCameraPress,
@@ -34,6 +84,27 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   const { logout } = useAuth();
   const [isRecordingStarted, setIsRecordingStarted] = React.useState(false);
   const holdTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hapticIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // Enhanced audio monitoring for voice-responsive haptics
+  const { currentAmplitude, startMonitoring, stopMonitoring } = useAudioMonitoring({
+    updateInterval: 100, // Update every 100ms for responsive haptics
+    threshold: 0.15, // Minimum amplitude threshold
+  });
+  
+  // Calculate average amplitude from visualizer bars for voice-responsive haptics (fallback)
+  const getAverageAmplitude = () => {
+    if (!visualizerBars || visualizerBars.length === 0) return 0.5; // Default amplitude
+    
+    const sum = visualizerBars.reduce((acc, bar) => acc + bar.value, 0);
+    return sum / visualizerBars.length;
+  };
+  
+  // Get the best available amplitude data
+  const getVoiceAmplitude = () => {
+    // Use real-time audio monitoring if available, otherwise fall back to visualizer bars
+    return currentAmplitude > 0 ? currentAmplitude : getAverageAmplitude();
+  };
   
   const recordButtonAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -44,6 +115,8 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
 
   const handleLogout = async () => {
     try {
+      // Trigger haptic feedback for logout action
+      triggerHaptic('stop'); // Use stop haptic for logout
       await logout();
       router.replace('/login');
     } catch (error) {
@@ -52,6 +125,8 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   };
 
   const handleSearch = () => {
+    // Trigger haptic feedback for search action
+    triggerHaptic('continuous', 0.5); // Medium haptic for search
     // Move to the Search circle, then open search overlay/modal
     onMoveToSearchCircle?.();
     onSearchPress?.();
@@ -71,6 +146,22 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
       console.log('⏰ Timeout fired - Starting recording');
       setIsRecordingStarted(true);
       holdTimeoutRef.current = null; // Clear the timeout reference
+      
+      // Start audio monitoring for voice-responsive haptics
+      startMonitoring();
+      
+      // Haptic feedback when recording starts
+      triggerHaptic('start');
+      
+      // Start voice-responsive haptic feedback while recording
+      hapticIntervalRef.current = setInterval(() => {
+        const amplitude = getVoiceAmplitude();
+        // Only trigger haptic if amplitude is above threshold to avoid constant feedback
+        if (amplitude > 0.15) { // Lower threshold for better responsiveness
+          triggerHaptic('continuous', amplitude);
+        }
+      }, 120); // More responsive haptics based on voice activity
+      
       onPressIn?.();
     }, 300); // 300ms hold threshold
   };
@@ -94,15 +185,31 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
     if (isRecordingStarted) {
       console.log('⏹️ Hold completed - Stopping recording');
       setIsRecordingStarted(false);
+      
+      // Stop audio monitoring
+      stopMonitoring();
+      
+      // Stop voice-responsive haptic feedback
+      if (hapticIntervalRef.current) {
+        clearInterval(hapticIntervalRef.current);
+        hapticIntervalRef.current = null;
+      }
+      
+      // Haptic feedback when recording stops
+      triggerHaptic('stop');
+      
       onPressOut?.();
     }
   };
 
-  // Cleanup timeout on unmount
+  // Cleanup timeout and haptic interval on unmount
   React.useEffect(() => {
     return () => {
       if (holdTimeoutRef.current) {
         clearTimeout(holdTimeoutRef.current);
+      }
+      if (hapticIntervalRef.current) {
+        clearInterval(hapticIntervalRef.current);
       }
     };
   }, []);
@@ -110,7 +217,14 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   return (
     <View style={styles.recordSection}>
       {/* Refresh Button */}
-      <TouchableOpacity style={styles.refreshButton} onPress={onRefreshPress}>
+      <TouchableOpacity 
+        style={styles.refreshButton} 
+        onPress={() => {
+          // Trigger haptic feedback for refresh action
+          triggerHaptic('continuous', 0.3); // Light haptic for refresh
+          onRefreshPress?.();
+        }}
+      >
         <MaterialIcons name="refresh" size={24} color="#8E8E93" />
       </TouchableOpacity>
       
@@ -155,7 +269,11 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
         <View style={styles.spacer} />
 
         <TouchableOpacity
-          onPress={onCameraPress}
+          onPress={() => {
+            // Trigger haptic feedback for camera action
+            triggerHaptic('continuous', 0.5); // Medium haptic for camera
+            onCameraPress?.();
+          }}
           style={[styles.actionButton, styles.actionButtonRight]}
           activeOpacity={0.8}
         >

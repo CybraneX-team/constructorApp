@@ -9,6 +9,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider } from '../contexts/AuthContext';
 import { SiteProvider } from '../contexts/SiteContext';
 import { ModalStackProvider } from '../contexts/ModalStackContext';
+import GlobalAlertProvider from '../components/GlobalAlertProvider';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -25,17 +26,19 @@ export default function RootLayout() {
     <AuthProvider>
       <SiteProvider>
         <ModalStackProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="main" options={{ headerShown: false }} />
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen name="signup" options={{ headerShown: false }} />
-            <Stack.Screen name="site-selection" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-          <StatusBar style="auto" />
-          </ThemeProvider>
+          <GlobalAlertProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="main" options={{ headerShown: false }} />
+              <Stack.Screen name="login" options={{ headerShown: false }} />
+              <Stack.Screen name="signup" options={{ headerShown: false }} />
+              <Stack.Screen name="site-selection" options={{ headerShown: false }} />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+            <StatusBar style="auto" />
+            </ThemeProvider>
+          </GlobalAlertProvider>
         </ModalStackProvider>
       </SiteProvider>
     </AuthProvider>

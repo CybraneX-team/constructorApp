@@ -189,6 +189,32 @@ function buildDailyWorkSummaryHtml(record: RecordDetail): string {
 
           /* Footer spacing for last table */
           .mb-16 { margin-bottom: 16px; }
+
+          /* Images section */
+          .images-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+          }
+          .image-container {
+            border: 1px solid #c9ccd1;
+            padding: 8px;
+            text-align: center;
+          }
+          .site-image {
+            width: 100%;
+            max-width: 200px;
+            height: auto;
+            border-radius: 4px;
+            margin-bottom: 8px;
+          }
+          .image-caption {
+            font-size: 10px;
+            font-weight: 600;
+            color: #666;
+            line-height: 1.2;
+          }
         </style>
       </head>
       <body>
@@ -226,6 +252,21 @@ function buildDailyWorkSummaryHtml(record: RecordDetail): string {
 
           <div class="section-header">Equipment</div>
           ${renderEquipmentTable(record)}
+
+          ${record.images && record.images.length > 0 ? `
+            <div class="section-header">Site Photos</div>
+            <div class="images-grid">
+              ${record.images.map((image, index) => `
+                <div class="image-container">
+                  <img src="${image.presignedUrl}" alt="Site Photo ${index + 1}" class="site-image" />
+                  <div class="image-caption">
+                    ${image.originalName || `Photo ${index + 1}`}
+                    ${image.customMetadata?.caption ? ` - ${escapeHtml(image.customMetadata.caption)}` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
         </div>
       </body>
     </html>

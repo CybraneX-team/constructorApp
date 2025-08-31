@@ -5,7 +5,6 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Animated,
@@ -16,6 +15,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
+import { customAlert } from '../services/customAlertService';
 import { router } from 'expo-router';
 import { Colors } from '../constants/Colors';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,12 +24,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import axiosInstance from '../utils/axiosConfig';
 import { useModalStack } from '../contexts/ModalStackContext';
+import { siteService } from '../services/siteService';
+import SiteDetailModal from '../components/SiteDetailModal';
 
 const { width, height } = Dimensions.get('window');
 
 const SiteSelectionScreen: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showSiteDetailModal, setShowSiteDetailModal] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('');
   
   // Create site form states
   const [siteName, setSiteName] = useState('');
@@ -75,17 +79,17 @@ const SiteSelectionScreen: React.FC = () => {
         setSites(response.data.sites || []);
       } else {
         console.error('Failed to load sites:', response.data.error);
-        Alert.alert('Error', 'Failed to load sites');
+        customAlert.error('Error', 'Failed to load sites');
       }
     } catch (error: any) {
       console.error('Error loading sites:', error);
       if (error.response?.status === 401) {
-        Alert.alert('Session Expired', 'Please log in again');
+        customAlert.error('Session Expired', 'Please log in again');
         logout();
       } else if (error.response?.status === 403) {
-        Alert.alert('Access Denied', 'You do not have permission to access this resource.');
+        customAlert.error('Access Denied', 'You do not have permission to access this resource.');
       } else {
-        Alert.alert('Error', 'Failed to load sites. Please try again.');
+        customAlert.error('Error', 'Failed to load sites. Please try again.');
       }
     }
   };
@@ -97,24 +101,29 @@ const SiteSelectionScreen: React.FC = () => {
     router.replace('/main');
   };
 
+  const handleSitePress = (site: Site) => {
+    // Open site detail modal
+    setSelectedSiteId(site.id);
+    setShowSiteDetailModal(true);
+  };
+
   const handleCreateSite = async () => {
     if (!siteName || !siteId || !companyName || !stakeholdersText) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      customAlert.error('Error', 'Please fill in all required fields');
       return;
     }
 
-    // Parse stakeholders emails
-    const stakeholders = stakeholdersText
-      .split(',')
-      .map(email => email.trim())
-      .filter(email => email.length > 0);
-
-    // Validate emails
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalidEmails = stakeholders.filter(email => !emailRegex.test(email));
+    // Parse and validate stakeholders emails using the service
+    const stakeholders = siteService.parseStakeholderEmails(stakeholdersText);
+    const { valid, invalid } = siteService.validateStakeholderEmails(stakeholders);
     
-    if (invalidEmails.length > 0) {
-      Alert.alert('Error', `Invalid email addresses: ${invalidEmails.join(', ')}`);
+    if (invalid.length > 0) {
+      customAlert.error('Error', `Invalid email addresses: ${invalid.join(', ')}`);
+      return;
+    }
+
+    if (valid.length === 0) {
+      customAlert.error('Error', 'Please provide at least one valid email address for stakeholders');
       return;
     }
 
@@ -126,16 +135,17 @@ const SiteSelectionScreen: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await axiosInstance.post('/sites', {
+      const response = await siteService.createSite({
         name: siteName,
         siteId: siteId,
         companyName: companyName,
-        stakeholders: stakeholders,
+        stakeholders: valid,
+        isActive: true,
       });
 
-      if (response.data.success) {
+      if (response.success) {
         // Use context method to add the new site
-        addSite(response.data.site);
+        addSite(response.site);
         setShowCreateForm(false);
         
         // Reset form
@@ -144,19 +154,19 @@ const SiteSelectionScreen: React.FC = () => {
         setCompanyName('');
         setStakeholdersText('');
         
-        Alert.alert('Success', 'Site created successfully!');
+        customAlert.success('Success', 'Site created successfully!');
       } else {
-        Alert.alert('Error', response.data.error || 'Failed to create site');
+        customAlert.error('Error', response.error || 'Failed to create site');
       }
     } catch (error: any) {
       console.error('Error creating site:', error);
       if (error.response?.status === 401) {
-        Alert.alert('Session Expired', 'Please log in again');
+        customAlert.error('Session Expired', 'Please log in again');
         logout();
       } else if (error.response?.data?.error) {
-        Alert.alert('Error', error.response.data.error);
+        customAlert.error('Error', error.response.data.error);
       } else {
-        Alert.alert('Error', 'Failed to create site. Please try again.');
+        customAlert.error('Error', 'Failed to create site. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -190,6 +200,7 @@ const SiteSelectionScreen: React.FC = () => {
     <TouchableOpacity
       style={styles.siteCard}
       onPress={() => handleSiteSelect(item)}
+      onLongPress={() => handleSitePress(item)}
       activeOpacity={0.8}
     >
       <View style={styles.siteHeader}>
@@ -215,6 +226,9 @@ const SiteSelectionScreen: React.FC = () => {
           {item.stakeholders.length > 2 && ` +${item.stakeholders.length - 2} more`}
         </Text>
       </View>
+      {/* <View style={styles.siteActions}>
+        <Text style={styles.longPressHint}>Long press to manage site</Text>
+      </View> */}
     </TouchableOpacity>
   );
 
@@ -471,6 +485,13 @@ const SiteSelectionScreen: React.FC = () => {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Site Detail Modal */}
+      <SiteDetailModal
+        visible={showSiteDetailModal}
+        siteId={selectedSiteId}
+        onClose={() => setShowSiteDetailModal(false)}
+      />
     </View>
   );
 };
@@ -877,6 +898,15 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '700',
+  },
+  siteActions: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  longPressHint: {
+    fontSize: 12,
+    color: Colors.light.new,
+    fontStyle: 'italic',
   },
 });
 
