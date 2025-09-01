@@ -170,6 +170,7 @@ const styles = StyleSheet.create({
   logo: {
     width: 60,
     height: 60,
+    borderRadius: 100,
   },
 });
 

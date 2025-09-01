@@ -1,0 +1,16 @@
+# Exclude iOS files from Android builds to avoid casing issues
+ios/
+*.pbxproj
+*.xcscheme
+*.xcworkspace
+*.swift
+*.plist
+*.entitlements
+*.storyboard
+*.bridging-header
+
+# Exclude development files
+node_modules/
+.git/
+.env
+*.log

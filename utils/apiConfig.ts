@@ -1,17 +1,22 @@
 
 // API Configuration for different environments
 const getApiBaseUrl = (): string => {
+  // Default fallback URL for production
+  const defaultUrl = 'http://13.203.216.38:3000';
+  
   if (__DEV__) {
     // Development environment - Backend server URL
     // Make sure your backend is running on this IP and port
     if (!process.env.EXPO_PUBLIC_BACKEND_URL) {
-      throw new Error('BACKEND_URL is not defined in environment variables');
+      console.warn('EXPO_PUBLIC_BACKEND_URL not found, using default URL');
+      return defaultUrl;
     }
     return process.env.EXPO_PUBLIC_BACKEND_URL;
   } else {
     // Production environment
     if (!process.env.EXPO_PUBLIC_BACKEND_URL) {
-      throw new Error('BACKEND_URL is not defined in environment variables');
+      console.warn('EXPO_PUBLIC_BACKEND_URL not found in production, using default URL');
+      return defaultUrl;
     }
     return process.env.EXPO_PUBLIC_BACKEND_URL;
   }

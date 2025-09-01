@@ -30,8 +30,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.VIBRATE"
       ],
-      "package": "com.cybranex.voiceai",
-      "versionCode": 1
+      "package": "com.cybranex.voiceai"
     },
     "web": {
       "bundler": "metro",
@@ -43,7 +42,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
