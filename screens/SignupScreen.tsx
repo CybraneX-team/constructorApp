@@ -20,7 +20,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const ACCESS_KEY = 'admin-access-2024';
 
 interface SignupScreenProps {
   navigation?: any;
@@ -52,11 +51,6 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
   const handleSignup = async () => {
     if (!email || (!isAdmin && !password) || (isAdmin && (!superPassword || !accessKey))) {
       customAlert.error('Error', 'Please fill in all required fields');
-      return;
-    }
-
-    if (isAdmin && accessKey !== ACCESS_KEY) {
-      customAlert.error('Error', 'Invalid access key for admin signup');
       return;
     }
 
