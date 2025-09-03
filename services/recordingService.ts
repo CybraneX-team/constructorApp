@@ -717,6 +717,131 @@ class RecordingService {
   }
 
   /**
+   * Update a recording field
+   * @param recordingId - The recording ID
+   * @param fieldPath - The path to the field (e.g., 'laborData.manager', 'dailyActivities')
+   * @param value - The new value for the field
+   * @param token - JWT authentication token
+   * @returns Promise with update result
+   */
+  async updateRecordingField(recordingId: string, fieldPath: string, value: any, token: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(recordingId)}/update`;
+    
+    try {
+      apiMonitor.startCall(apiUrl, 'PATCH');
+      console.log(`[${new Date().toISOString()}] 📝 UPDATE_START - ${recordingId} - ${fieldPath}`);
+      
+      const response = await fetch(apiUrl, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          fieldPath,
+          value,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Update failed response:', errorText);
+        apiMonitor.endCall(apiUrl, 'PATCH', false, `${response.status} ${errorText}`);
+        throw new Error(`Update failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log(`[${new Date().toISOString()}] ✅ UPDATE_SUCCESS - ${recordingId} - ${fieldPath}`);
+      
+      apiMonitor.endCall(apiUrl, 'PATCH', true);
+      
+      return {
+        success: true,
+        message: result.message || 'Field updated successfully',
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update field';
+      console.log(`[${new Date().toISOString()}] ❌ UPDATE_ERROR - ${recordingId} - ${fieldPath} - ${errorMessage}`);
+      
+      apiMonitor.endCall(apiUrl, 'PATCH', false, errorMessage);
+      
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Delete an image from a recording using PATCH update method
+   * @param recordingId - The recording ID
+   * @param imageId - The image ID to delete
+   * @param token - JWT authentication token
+   * @returns Promise with delete result
+   */
+  async deleteRecordingImage(recordingId: string, imageId: string, token: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    // Use the update endpoint to remove the image from the images array
+    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(recordingId)}/update`;
+    
+    try {
+      apiMonitor.startCall(apiUrl, 'PATCH');
+      console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_START - ${recordingId} - ${imageId}`);
+      
+      const response = await fetch(apiUrl, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          fieldPath: 'images',
+          operation: 'removeItem',
+          value: imageId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Delete image failed response:', errorText);
+        apiMonitor.endCall(apiUrl, 'PATCH', false, `${response.status} ${errorText}`);
+        throw new Error(`Delete image failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log(`[${new Date().toISOString()}] ✅ DELETE_IMAGE_SUCCESS - ${recordingId} - ${imageId}`);
+      
+      apiMonitor.endCall(apiUrl, 'PATCH', true);
+      
+      return {
+        success: true,
+        message: result.message || 'Image deleted successfully',
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete image';
+      console.log(`[${new Date().toISOString()}] ❌ DELETE_IMAGE_ERROR - ${recordingId} - ${imageId} - ${errorMessage}`);
+      
+      apiMonitor.endCall(apiUrl, 'PATCH', false, errorMessage);
+      
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
    * Sets the base URL for the backend
    */
   setBaseUrl(url: string): void {

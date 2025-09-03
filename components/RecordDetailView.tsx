@@ -20,12 +20,23 @@ import { generateAndSharePDF, generateAndDownloadPDF } from '../utils/pdfGenerat
 import { useAuth } from '../contexts/AuthContext';
 import { recordingService } from '../services/recordingService';
 import { Ionicons } from '@expo/vector-icons';
+import EditFieldModal, { EditFieldModalProps } from './EditFieldModal';
+import { 
+  EditableLaborCard, 
+  EditableSubcontractorCard, 
+  EditableMaterialCard, 
+  EditableEquipmentCard 
+} from './EditableCards';
 
 const screenWidth = Dimensions.get('window').width;
 const isSmallScreen = screenWidth < 360;
 
 // Separate component for detail content to avoid hook violations
-const DetailContent: React.FC<{ record: any }> = ({ record }) => {
+const DetailContent: React.FC<{ 
+  record: any;
+  onEditField?: (fieldType: EditFieldModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => void;
+  onDeleteImage?: (imageId: string) => void;
+}> = ({ record, onEditField, onDeleteImage }) => {
   console.log('🔍 DetailContent - Record received:', JSON.stringify(record, null, 2));
 
   // All animated styles moved here to avoid hook violations
@@ -216,7 +227,17 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
       {/* Daily Activities Section - Only render if has content */}
       {hasDailyActivities && (
         <Animated.View style={[styles.detailSection, activitiesSectionStyle]}>
-          <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
+            {onEditField && (
+              <TouchableOpacity 
+                onPress={() => onEditField('multiline', 'Daily Activities', 'dailyActivities', record.dailyActivities)}
+                style={styles.editButton}
+              >
+                <Ionicons name="create-outline" size={16} color="#007AFF" />
+              </TouchableOpacity>
+            )}
+          </View>
           <View style={styles.activitiesCard}>
             <Text style={styles.activitiesText}>{record.dailyActivities}</Text>
           </View>
@@ -233,11 +254,13 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
               const companyName = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
               console.log('🔍 Rendering subcontractor card for:', companyName);
               return (
-                <SubcontractorCard 
+                <EditableSubcontractorCard 
                   key={key}
                   company={companyName}
                   employees={data.employees || 0}
                   hours={data.hours || 0}
+                  contractorKey={key}
+                  onEditField={onEditField}
                 />
               );
             } else {
@@ -259,11 +282,13 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
                 const title = role.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                 console.log('🔍 Rendering labor card for:', title);
                 return (
-                  <LaborCard 
+                  <EditableLaborCard 
                     key={role}
                     title={title} 
                     data={data} 
-                    color="#000" 
+                    color="#000"
+                    roleKey={role}
+                    onEditField={onEditField}
                   />
                 );
               } else {
@@ -286,11 +311,13 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
                 const title = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                 console.log('🔍 Rendering material card for:', title);
                 return (
-                  <MaterialCard 
+                  <EditableMaterialCard 
                     key={key}
                     title={title}
                     data={data}
                     color="#000"
+                    materialKey={key}
+                    onEditField={onEditField}
                   />
                 );
               } else {
@@ -313,11 +340,13 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
                 const title = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                 console.log('🔍 Rendering equipment card for:', title);
                 return (
-                  <EquipmentCard 
+                  <EditableEquipmentCard 
                     key={key}
                     title={title} 
                     data={data} 
-                    color="#000" 
+                    color="#000"
+                    equipmentKey={key}
+                    onEditField={onEditField}
                   />
                 );
               } else {
@@ -342,9 +371,24 @@ const DetailContent: React.FC<{ record: any }> = ({ record }) => {
                   resizeMode="cover"
                 />
                 <View style={styles.imageInfo}>
-                  <Text style={styles.imageCaption}>
-                    {image.originalName || `Photo ${index + 1}`}
-                  </Text>
+                  <View style={styles.imageInfoHeader}>
+                    <Text style={styles.imageCaption}>
+                      {image.originalName || `Photo ${index + 1}`}
+                    </Text>
+                    {onDeleteImage && (
+                      <TouchableOpacity 
+                        onPress={() => {
+                          console.log('Delete button pressed for image:', image.id || image.url || `image_${index}`);
+                          onDeleteImage(image.id || image.url || `image_${index}`);
+                        }}
+                        style={styles.deleteImageButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="trash" size={18} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   {image.customMetadata?.caption && (
                     <Text style={styles.imageDescription}>
                       {image.customMetadata.caption}
@@ -573,6 +617,20 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   const [resolvedRecord, setResolvedRecord] = useState(record);
+  const [editModal, setEditModal] = useState<{
+    visible: boolean;
+    fieldType: EditFieldModalProps['fieldType'];
+    fieldLabel: string;
+    fieldPath: string;
+    initialValue: any;
+    placeholder?: string;
+  }>({ 
+    visible: false, 
+    fieldType: 'text', 
+    fieldLabel: '', 
+    fieldPath: '', 
+    initialValue: '' 
+  });
   const { token } = useAuth();
 
   useEffect(() => {
@@ -665,6 +723,141 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
     }
   };
 
+  const handleEditField = (fieldType: EditFieldModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => {
+    console.log(`[${new Date().toISOString()}] 📝 EDIT_FIELD_OPEN - ${fieldLabel} (${fieldPath})`);
+    console.log('Edit field data:', { fieldType, fieldLabel, fieldPath, initialValue, placeholder });
+    
+    setEditModal({
+      visible: true,
+      fieldType,
+      fieldLabel,
+      fieldPath,
+      initialValue,
+      placeholder,
+    });
+  };
+
+  const handleSaveField = async (value: any): Promise<{ success: boolean; error?: string }> => {
+    if (!token) {
+      return { success: false, error: 'No authentication token available' };
+    }
+
+    try {
+      const result = await recordingService.updateRecordingField(
+        resolvedRecord.id,
+        editModal.fieldPath,
+        value,
+        token
+      );
+
+      if (result.success) {
+        // Update the local record state
+        const updatedRecord = { ...resolvedRecord };
+        const pathParts = editModal.fieldPath.split('.');
+        let current = updatedRecord;
+        
+        // Navigate to the parent object
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          current = current[pathParts[i]];
+        }
+        
+        // Set the final value
+        current[pathParts[pathParts.length - 1]] = value;
+        
+        setResolvedRecord(updatedRecord);
+        return { success: true };
+      } else {
+        // If the update API endpoint doesn't exist yet, just update locally
+        if (result.error?.includes('404') || result.error?.includes('Cannot PATCH')) {
+          console.log('Backend update API not available yet, updating locally only');
+          
+          // Update the local record state
+          const updatedRecord = { ...resolvedRecord };
+          const pathParts = editModal.fieldPath.split('.');
+          let current = updatedRecord;
+          
+          // Navigate to the parent object
+          for (let i = 0; i < pathParts.length - 1; i++) {
+            current = current[pathParts[i]];
+          }
+          
+          // Set the final value
+          current[pathParts[pathParts.length - 1]] = value;
+          
+          setResolvedRecord(updatedRecord);
+          
+          // Show info message about local-only update
+          setTimeout(() => {
+            customAlert.alert(
+              'Local Update Only',
+              'Changes saved locally. Full backend sync will be available in a future update.'
+            );
+          }, 100);
+          
+          return { success: true };
+        }
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to save field' 
+      };
+    }
+  };
+
+  const handleDeleteImage = async (imageId: string) => {
+    console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_CLICKED - ${imageId}`);
+    
+    // For now, show a message that image deletion is not yet supported by the backend
+    customAlert.alert(
+      'Feature Coming Soon',
+      'Image deletion functionality will be available in a future update once the backend API supports it. The delete button is ready and functional on the frontend side.'
+    );
+
+    // Uncomment this code once the backend API supports image deletion:
+    /*
+    if (!token) {
+      customAlert.error('Error', 'No authentication token available');
+      return;
+    }
+
+    customAlert.confirm(
+      'Delete Image',
+      'Are you sure you want to delete this image? This action cannot be undone.',
+      async () => {
+        try {
+          console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_START - ${imageId}`);
+          
+          const result = await recordingService.deleteRecordingImage(
+            resolvedRecord.id,
+            imageId,
+            token
+          );
+
+          if (result.success) {
+            // Remove the image from local state
+            const updatedRecord = {
+              ...resolvedRecord,
+              images: resolvedRecord.images.filter((img: any) => img.id !== imageId)
+            };
+            setResolvedRecord(updatedRecord);
+            
+            console.log(`[${new Date().toISOString()}] ✅ DELETE_IMAGE_SUCCESS - ${imageId}`);
+            customAlert.success('Success', 'Image deleted successfully');
+          } else {
+            console.error(`[${new Date().toISOString()}] ❌ DELETE_IMAGE_ERROR - ${imageId}:`, result.error);
+            customAlert.error('Error', result.error || 'Failed to delete image. Please try again.');
+          }
+        } catch (error) {
+          console.error(`[${new Date().toISOString()}] ❌ DELETE_IMAGE_ERROR - ${imageId}:`, error);
+          customAlert.error('Error', 'An unexpected error occurred. Please try again.');
+        }
+      }
+    );
+    */
+  };
+
   return (
     <Animated.View style={[styles.recordDetailOverlay, backdropStyle]}>
       <TouchableOpacity style={styles.recordDetailBackdrop} onPress={onClose} activeOpacity={1} />
@@ -715,9 +908,26 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.recordDetailContent}
           data={[{ key: 'content' }]}
-          renderItem={() => <DetailContent record={resolvedRecord} />}
+          renderItem={() => (
+            <DetailContent 
+              record={resolvedRecord} 
+              onEditField={handleEditField}
+              onDeleteImage={handleDeleteImage}
+            />
+          )}
         />
       </Animated.View>
+      
+      {/* EditFieldModal - positioned at same level as RecordDetailView */}
+      <EditFieldModal
+        visible={editModal.visible}
+        onClose={() => setEditModal({ ...editModal, visible: false })}
+        onSave={handleSaveField}
+        fieldType={editModal.fieldType}
+        fieldLabel={editModal.fieldLabel}
+        initialValue={editModal.initialValue}
+        placeholder={editModal.placeholder}
+      />
     </Animated.View>
   );
 };
@@ -945,6 +1155,19 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#F0F8FF',
+    borderWidth: 1,
+    borderColor: '#007AFF',
   },
 
   // Card Container
@@ -1224,11 +1447,33 @@ const styles = StyleSheet.create({
   imageInfo: {
     padding: 16,
   },
+  imageInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   imageCaption: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 4,
+    flex: 1,
+  },
+  deleteImageButton: {
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#FF3B30',
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   imageDescription: {
     fontSize: 14,
