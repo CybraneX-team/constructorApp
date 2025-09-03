@@ -43,25 +43,22 @@ const VoiceMemosScreen = () => {
   // Get authentication token
   const { token } = useAuth();
   
-  // Use new circular progress data hook with caching
-    const {
+  // Use simplified circular progress data hook
+  const {
     workProgress: todayWorkProgress,
-    recordingsCount,
-    recordingsData: cachedRecordingsData,
     isLoading: circularProgressLoading,
     isFirstTime,
     refreshData: refreshCircularProgress
   } = useCircularProgressData();
   
-  // Keep original job progress for other functionality
-  const { jobProgress, loading: jobProgressLoading, error: jobProgressError, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151', token || undefined);
+  // Use only the progress from circular progress hook to avoid duplicate calls
+  const refreshProgress = () => refreshCircularProgress();
 
 
   
   // Log when selected site changes
   useEffect(() => {
-    console.log('🏗️ Selected site changed:', selectedSite?.name, 'SiteId:', selectedSite?.siteId);
-    console.log('🏗️ Using job number:', selectedSite?.siteId || 'CFX 417-151');
+    console.log(`[${new Date().toISOString()}] 🏢 SITE_SELECTED - ${selectedSite?.name} (${selectedSite?.siteId})`);
   }, [selectedSite]);
 
   const {
@@ -75,6 +72,7 @@ const VoiceMemosScreen = () => {
     selectedRecord,
     memos,
     recordsList,
+    isLoadingRecords,
     isUploading,
     uploadProgress,
     recordButtonScale,
@@ -108,10 +106,11 @@ const VoiceMemosScreen = () => {
     handleSearchPress,
     handleCloseSearch,
     fetchRecordings,
+    deleteRecord,
   } = useVoiceMemos({ 
     onUploadSuccess: (message: string) => showSuccessToastMessage(message),
     onRefreshProgress: refreshProgress,
-    cachedRecordingsData: cachedRecordingsData
+    onDeleteSuccess: (message: string) => showSuccessToastMessage(message)
   });
 
 
@@ -571,7 +570,7 @@ const VoiceMemosScreen = () => {
                       handleSearchPress={handleSearchPress}
                       onShowWorkProgressModal={handleShowWorkProgressModal}
                       workProgress={todayWorkProgress}
-                      records={Array(recordingsCount).fill({})} // Use cached count instead of full list
+                      records={[]} // Records loaded on demand when needed
                     />
                   ))}
                 </Animated.View>
@@ -604,6 +603,8 @@ const VoiceMemosScreen = () => {
                 listOpacity={recordsListOpacity}
                 backdropOpacity={recordsBackdropOpacity}
                 onRecordClick={handleRecordClick}
+                onDeleteRecord={deleteRecord}
+                isLoading={isLoadingRecords}
               />
             );
           })()}
@@ -674,7 +675,7 @@ const VoiceMemosScreen = () => {
             workProgress={todayWorkProgress}
             onClose={handleCloseWorkProgressModal}
             onRefresh={refreshProgress}
-            loading={jobProgressLoading}
+            loading={circularProgressLoading}
             jobNumber={selectedSite?.siteId || 'CFX 417-151'}
             modalScale={workProgressModalScale}
             modalOpacity={workProgressModalOpacity}

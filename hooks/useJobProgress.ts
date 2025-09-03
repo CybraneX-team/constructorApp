@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { jobProgressService, ProcessedJobProgress } from '../services/jobProgressService';
 
+// Global request cache to prevent duplicate calls
+const requestCache = new Map<string, Promise<ProcessedJobProgress>>();
+
 interface UseJobProgressResult {
   jobProgress: ProcessedJobProgress | null;
   loading: boolean;
@@ -26,7 +29,14 @@ export const useJobProgress = (jobNumber?: string, token?: string): UseJobProgre
     setError(null);
     
     try {
-      const progress = await jobProgressService.getJobProgress(currentJobNumber, token);
+      const cacheKey = `${currentJobNumber}-${token || 'no-token'}`;
+      let request = requestCache.get(cacheKey);
+      if (!request) {
+        request = jobProgressService.getJobProgress(currentJobNumber, token);
+        requestCache.set(cacheKey, request);
+      }
+      const progress = await request;
+      requestCache.delete(cacheKey);
       setJobProgress(progress);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch job progress';

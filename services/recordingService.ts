@@ -1,5 +1,6 @@
 import { AudioRecorder } from 'expo-audio';
 import { config } from '../config/app.config';
+import { apiMonitor } from './apiMonitor';
 
 export interface RecordingUploadData {
   id: string;
@@ -463,16 +464,27 @@ class RecordingService {
     count: number;
     error?: string;
   }> {
+    const apiUrl = `${this.baseUrl}/recordings`;
+    
     try {
+      // Start API monitoring
+      apiMonitor.startCall(apiUrl, 'GET');
       console.log('📂 Fetching all recordings');
       
-      const response = await fetch(`${this.baseUrl}/recordings`, {
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -484,6 +496,9 @@ class RecordingService {
       console.log('✅ Recordings fetched successfully:', result.count, 'recordings');
       console.log('📂 API response structure:', Object.keys(result));
       
+      // End API monitoring - success
+      apiMonitor.endCall(apiUrl, 'GET', true);
+      
       return {
         success: result.success,
         recordings: result.recordings || [],
@@ -494,12 +509,27 @@ class RecordingService {
     } catch (error) {
       console.error('❌ Failed to fetch recordings:', error);
       
+      // End API monitoring - error
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch recordings';
+      apiMonitor.endCall(apiUrl, 'GET', false, errorMessage);
+      
+      // Handle timeout specifically
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          success: false,
+          recordings: [],
+          dayRecordings: [],
+          count: 0,
+          error: 'Request timed out after 30 seconds. Please check your network connection.',
+        };
+      }
+      
       return {
         success: false,
         recordings: [],
         dayRecordings: [],
         count: 0,
-        error: error instanceof Error ? error.message : 'Failed to fetch recordings',
+        error: errorMessage,
       };
     }
   }
@@ -628,6 +658,61 @@ class RecordingService {
     } catch (error: any) {
       console.error('Failed to fetch recording summary:', error);
       return { success: false, summary: null, error: error?.message || 'Unknown error' };
+    }
+  }
+
+  /**
+   * Delete a day recording
+   * @param dayRecordingId - The day recording ID (format: YYYY-MM-DD_jobNumber)
+   * @param token - JWT authentication token
+   * @returns Promise with delete result
+   */
+  async deleteRecording(dayRecordingId: string, token: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(dayRecordingId)}`;
+    
+    try {
+      apiMonitor.startCall(apiUrl, 'DELETE');
+      console.log(`[${new Date().toISOString()}] 🗑️ DELETE_START - ${dayRecordingId}`);
+      
+      const response = await fetch(apiUrl, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Delete failed response:', errorText);
+        apiMonitor.endCall(apiUrl, 'DELETE', false, `${response.status} ${errorText}`);
+        throw new Error(`Delete failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log(`[${new Date().toISOString()}] ✅ DELETE_SUCCESS - ${dayRecordingId}`);
+      
+      apiMonitor.endCall(apiUrl, 'DELETE', true);
+      
+      return {
+        success: true,
+        message: result.message || 'Recording deleted successfully',
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete recording';
+      console.log(`[${new Date().toISOString()}] ❌ DELETE_ERROR - ${dayRecordingId} - ${errorMessage}`);
+      
+      apiMonitor.endCall(apiUrl, 'DELETE', false, errorMessage);
+      
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
   }
 

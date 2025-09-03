@@ -58,6 +58,7 @@ export interface RecordsListProps {
   listOpacity: Animated.SharedValue<number>;
   backdropOpacity: Animated.SharedValue<number>;
   onRecordClick: (recordId: string) => void;
+  onDeleteRecord?: (recordId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface RecordDetailViewProps {

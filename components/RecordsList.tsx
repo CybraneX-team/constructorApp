@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -17,6 +18,8 @@ import { RecordsListProps } from './types';
 import { recordingService } from '../services/recordingService';
 import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
+import { Ionicons } from '@expo/vector-icons';
+
 
 // Separate component for record item to avoid hook violations
 const RecordItem: React.FC<{
@@ -25,7 +28,8 @@ const RecordItem: React.FC<{
   onRecordClick: (id: string) => void;
   getTypeIcon: (type: string) => string;
   getTypeColor: (type: string) => string;
-}> = ({ item, index, onRecordClick, getTypeIcon, getTypeColor }) => {
+  onDeleteRecord?: (recordId: string) => Promise<{ success: boolean; error?: string }>;
+}> = ({ item, index, onRecordClick, getTypeIcon, getTypeColor, onDeleteRecord }) => {
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: withTiming(1, { duration: 300 + index * 50 }),
     transform: [
@@ -36,6 +40,7 @@ const RecordItem: React.FC<{
 
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [summary, setSummary] = useState<any | null>(null);
   const { token } = useAuth();
 
@@ -56,6 +61,45 @@ const RecordItem: React.FC<{
     } else {
       setIsOpen(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!onDeleteRecord) return;
+
+    Alert.alert(
+      'Delete Recording',
+      `Are you sure you want to delete "${item.title}"? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log(`[${new Date().toISOString()}] 🗑️ DELETE_RECORD - Starting deletion for record ${item.id}`);
+              setIsDeleting(true);
+              const result = await onDeleteRecord(item.id);
+              
+              if (result.success) {
+                console.log(`[${new Date().toISOString()}] ✅ DELETE_RECORD - Successfully deleted record ${item.id}`);
+                // No need to do anything here - the parent component will handle state updates
+              } else {
+                console.error(`[${new Date().toISOString()}] ❌ DELETE_RECORD - Failed to delete record ${item.id}:`, result.error);
+                Alert.alert('Error', result.error || 'Failed to delete recording. Please try again.');
+              }
+            } catch (error) {
+              console.error(`[${new Date().toISOString()}] ❌ DELETE_RECORD - Error deleting record ${item.id}:`, error);
+              Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+            } finally {
+              setIsDeleting(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -81,8 +125,24 @@ const RecordItem: React.FC<{
           </View>
         </View>
         <View style={styles.recordRightSection}>
-          <View style={styles.durationContainer}>
-            <Text style={styles.recordDuration}>{item.duration}</Text>
+          <View style={styles.recordActionsRow}>
+            <View style={styles.durationContainer}>
+              <Text style={styles.recordDuration}>{item.duration}</Text>
+            </View>
+            {onDeleteRecord && (
+              <TouchableOpacity 
+                onPress={handleDelete}
+                style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
+                activeOpacity={0.7}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="trash-outline" style={styles.deleteButtonText} />
+                )}
+              </TouchableOpacity>
+            )}
           </View>
           {/* <TouchableOpacity onPress={toggleSummary} style={styles.summaryPill} activeOpacity={0.8}>
             <Text style={styles.summaryPillText}>{isOpen ? 'Hide' : 'Summary'}</Text>
@@ -129,20 +189,19 @@ function renderSummary(summary: any) {
   return <Text style={styles.summaryCode}>{JSON.stringify(summary, null, 2)}</Text>;
 }
 
-const RecordsList: React.FC<RecordsListProps> = ({ 
+const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({ 
   records, 
   onClose, 
   listScale, 
   listOpacity, 
   backdropOpacity,
-  onRecordClick 
+  onRecordClick,
+  onDeleteRecord,
+  isLoading: propIsLoading 
 }) => {
   const { selectedSite } = useSite();
   
-  console.log('📂 RecordsList render - records:', records);
-  console.log('📂 RecordsList render - records length:', records?.length);
-  console.log('📂 RecordsList render - records type:', typeof records);
-  console.log('📂 RecordsList render - selected site:', selectedSite?.name, 'SiteId:', selectedSite?.siteId);
+  console.log(`[${new Date().toISOString()}] 📂 MODAL_RENDER - ${records?.length || 0} records for site ${selectedSite?.siteId}`);
   
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
@@ -177,11 +236,9 @@ const RecordsList: React.FC<RecordsListProps> = ({
 
   // Ensure records is an array
   const safeRecords = Array.isArray(records) ? records : [];
-  console.log('📂 RecordsList render - safeRecords:', safeRecords);
-  console.log('📂 RecordsList render - safeRecords length:', safeRecords.length);
 
-  // Show loading state if no records are available yet
-  const isLoading = safeRecords.length === 0;
+  // Use loading state from props, but prioritize showing data if available
+  const isLoading = propIsLoading && safeRecords.length === 0;
 
   return (
     <Animated.View style={[styles.recordsOverlay, backdropStyle]}>
@@ -222,18 +279,16 @@ const RecordsList: React.FC<RecordsListProps> = ({
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.recordsListContent}
-            renderItem={({ item, index }) => {
-              console.log('📂 Rendering record item:', item, 'at index:', index);
-              return (
-                <RecordItem
-                  item={item}
-                  index={index}
-                  onRecordClick={onRecordClick}
-                  getTypeIcon={getTypeIcon}
-                  getTypeColor={getTypeColor}
-                />
-              );
-            }}
+            renderItem={({ item, index }) => (
+              <RecordItem
+                item={item}
+                index={index}
+                onRecordClick={onRecordClick}
+                getTypeIcon={getTypeIcon}
+                getTypeColor={getTypeColor}
+                onDeleteRecord={onDeleteRecord}
+              />
+            )}
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No recordings found</Text>
@@ -412,12 +467,37 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     minWidth: 100,
   },
+  recordActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   durationContainer: {
     backgroundColor: '#F8F9FA',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    marginBottom: 8,
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  deleteButtonDisabled: {
+    backgroundColor: '#FF9999',
+    shadowOpacity: 0.1,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    color: '#FFFFFF',
   },
   recordDuration: {
     fontSize: 13,

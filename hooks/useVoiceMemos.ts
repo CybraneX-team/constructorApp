@@ -32,7 +32,7 @@ const triggerCircleChangeHaptic = () => {
 export const useVoiceMemos = (options?: { 
   onUploadSuccess?: (message: string) => void;
   onRefreshProgress?: () => Promise<void>;
-  cachedRecordingsData?: any[];
+  onDeleteSuccess?: (message: string) => void;
 }) => {
   // Get authentication context
   const { token } = useAuth();
@@ -74,6 +74,7 @@ export const useVoiceMemos = (options?: {
   const [selectedRecord, setSelectedRecord] = useState<RecordDetail | null>(null);
   const [memos, setMemos] = useState<Memo[]>(initialMemos);
   const [recordsList, setRecordsList] = useState<any[]>([]);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -100,65 +101,119 @@ export const useVoiceMemos = (options?: {
   const searchOverlayTranslateY = useSharedValue(screenHeight);
   const searchOverlayOpacity = useSharedValue(0);
 
-  // Fetch recordings from backend
+  // Fetch recordings from backend - simple and clean
   const fetchRecordings = useCallback(async () => {
-    if (!token) return;
+    const startTime = Date.now();
+    console.log(`[${new Date().toISOString()}] 📂 FETCH_START - Getting recordings for site: ${selectedSite?.siteId}`);
+    
+    if (!token) {
+      console.log(`[${new Date().toISOString()}] ⚠️ FETCH_SKIP - No auth token available`);
+      return;
+    }
+    
+    if (!selectedSite?.siteId) {
+      console.log(`[${new Date().toISOString()}] ⚠️ FETCH_SKIP - No site selected`);
+      setRecordsList([]);
+      return;
+    }
+    
+    setIsLoadingRecords(true);
+    
     try {
-      console.log('📂 Fetching recordings with token:', token ? 'present' : 'missing');
-      console.log('📂 Selected site:', selectedSite?.name, 'SiteId:', selectedSite?.siteId);
-      
       const res = await recordingService.getAllRecordings(token);
-      console.log('📂 API response:', res);
+      const duration = Date.now() - startTime;
       
       if (res.success) {
-        // The backend returns 'dayRecordings', not 'recordings'
-        const dayRecordings = res.dayRecordings || res.recordings || [];
+        const dayRecordings = res.dayRecordings || [];
         
         // Filter recordings by selected site's job number
-        const filteredRecordings = selectedSite?.siteId 
-          ? dayRecordings.filter((recording: any) => recording.jobNumber === selectedSite.siteId)
-          : [];
+        const filteredRecordings = dayRecordings.filter(
+          (recording: any) => recording.jobNumber === selectedSite.siteId
+        );
         
-        console.log('📂 Total recordings from API:', dayRecordings.length);
-        console.log('📂 Filtered recordings for site', selectedSite?.siteId, ':', filteredRecordings.length);
-        
+        // Map to UI format
         const mapped = filteredRecordings.map(mapBackendRecordingToListItem);
-        console.log('📂 Mapped dayRecordings:', mapped);
-        console.log('📂 Records count:', mapped.length);
+        
+        console.log(`[${new Date().toISOString()}] ✅ FETCH_SUCCESS - ${duration}ms - Total: ${dayRecordings.length}, Filtered: ${mapped.length}`);
         
         setRecordsList(mapped);
       } else {
-        console.error('📂 Failed to fetch recordings:', res.error);
+        console.log(`[${new Date().toISOString()}] ⚠️ FETCH_FAILED - ${duration}ms - API Error: ${res.error}`);
         setRecordsList([]);
+        
+        // Show user-friendly error if API fails
+        if (res.error?.includes('timeout')) {
+          // Handle timeout error from service
+          console.error('Request timed out - this suggests backend performance issues');
+        }
       }
-    } catch (e) {
-      console.error('📂 Failed to load recordings:', e);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.log(`[${new Date().toISOString()}] ❌ FETCH_ERROR - ${duration}ms - ${error}`);
       setRecordsList([]);
+      
+      // Log specific error types for debugging
+      if (error instanceof TypeError && error.message === 'Network request failed') {
+        console.error('Network request failed - check backend connectivity');
+      } else if (error instanceof Error && error.name === 'AbortError') {
+        console.error('Request was aborted due to timeout (15s)');
+      }
+    } finally {
+      setIsLoadingRecords(false);
+      
+      // Log API performance stats periodically
+      const { apiMonitor } = await import('../services/apiMonitor');
+      apiMonitor.logStats();
     }
   }, [token, selectedSite]);
 
-  useEffect(() => {
-    fetchRecordings();
-  }, [fetchRecordings]);
+  // Removed auto-fetch - recordings now loaded only when modal opens
 
-  // Initialize recordings from cache if available (for first load)
-  useEffect(() => {
-    if (options?.cachedRecordingsData && options.cachedRecordingsData.length > 0 && recordsList.length === 0) {
-      console.log('📦 Initializing recordings from cache in useVoiceMemos:', options.cachedRecordingsData.length, 'items');
-      setRecordsList(options.cachedRecordingsData);
+  // Delete record function
+  const deleteRecord = useCallback(async (recordId: string) => {
+    if (!token) {
+      console.log(`[${new Date().toISOString()}] ⚠️ DELETE_SKIP - No auth token`);
+      return { success: false, error: 'No authentication token available' };
     }
-  }, [options?.cachedRecordingsData, recordsList.length]);
 
-  // Refetch recordings when selected site changes
-  useEffect(() => {
-    if (selectedSite?.siteId) {
-      console.log('📂 Selected site changed, refetching recordings for:', selectedSite.siteId);
-      fetchRecordings();
-    } else {
-      console.log('📂 No site selected, clearing recordings');
-      setRecordsList([]);
+    console.log(`[${new Date().toISOString()}] 🗑️ DELETE_REQUEST - ${recordId}`);
+    
+    try {
+      const result = await recordingService.deleteRecording(recordId, token);
+      
+      if (result.success) {
+        // Remove the deleted record from the local state
+        setRecordsList(prevRecords => 
+          prevRecords.filter(record => record.id !== recordId)
+        );
+        
+        console.log(`[${new Date().toISOString()}] ✅ DELETE_LOCAL_UPDATE - Removed ${recordId} from list`);
+        
+        // Trigger success callback
+        if (options?.onDeleteSuccess) {
+          options.onDeleteSuccess(result.message || 'Recording deleted successfully');
+        }
+        
+        // Optionally refresh progress data since deleting a recording might affect progress
+        if (options?.onRefreshProgress) {
+          options.onRefreshProgress();
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete recording';
+      console.log(`[${new Date().toISOString()}] ❌ DELETE_FAILED - ${recordId} - ${errorMessage}`);
+      return { success: false, error: errorMessage };
     }
-  }, [selectedSite?.siteId, fetchRecordings]);
+  }, [token, options]);
+
+  // Simple site change handler - clear records when site changes
+  useEffect(() => {
+    console.log(`[${new Date().toISOString()}] 🏢 SITE_CHANGE - ${selectedSite?.siteId || 'none'}`);
+    // Clear records when site changes - they will be loaded on demand when modal opens
+    setRecordsList([]);
+  }, [selectedSite?.siteId]);
 
   // Get current title based on active circle and recording state
   const getCurrentTitle = () => {
@@ -274,15 +329,14 @@ export const useVoiceMemos = (options?: {
     },
   });
 
-  // Records management functions
+  // Records management functions - clean and simple
   const handleAccessRecords = async () => {
-    console.log('📂 handleAccessRecords called, current showRecordsList:', showRecordsList);
-    console.log('📂 Current recordsList length:', recordsList.length);
+    console.log(`[${new Date().toISOString()}] 📂 MODAL_OPEN - Opening records modal`);
 
     if (!showRecordsList) {
-      console.log('📂 Setting showRecordsList to true immediately');
       setShowRecordsList(true);
       
+      // Start modal animations
       recordsButtonScale.value = withSpring(1.1, {
         damping: 20,
         stiffness: 500,
@@ -295,10 +349,13 @@ export const useVoiceMemos = (options?: {
       });
       recordsListOpacity.value = withTiming(1, { duration: 200 });
       
-      // Fetch recordings in the background after modal is open
-      setTimeout(() => {
+      // Fetch recordings immediately when modal opens
+      if (recordsList.length === 0 && !isLoadingRecords) {
+        console.log(`[${new Date().toISOString()}] 📂 FETCH_TRIGGER - No data cached, fetching now`);
         fetchRecordings();
-      }, 100);
+      } else if (recordsList.length > 0) {
+        console.log(`[${new Date().toISOString()}] 📂 DATA_CACHED - Using ${recordsList.length} cached records`);
+      }
     }
   };
 
@@ -722,6 +779,7 @@ export const useVoiceMemos = (options?: {
     selectedRecord,
     memos,
     recordsList,
+    isLoadingRecords,
     isUploading,
     uploadProgress,
     
@@ -767,6 +825,7 @@ export const useVoiceMemos = (options?: {
     uploadRecording,
     formatDuration,
     fetchRecordings,
+    deleteRecord,
   };
 };
 
