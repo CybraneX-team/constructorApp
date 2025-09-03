@@ -24,12 +24,61 @@ export interface ImageData {
 }
 
 export const imageService = {
+  // Find the current day recording for a job number (today's recording)
+  async getCurrentDayRecordingId(jobNumber: string, token?: string): Promise<string | null> {
+    try {
+      if (!token) {
+        console.warn('📸 No token provided for getCurrentDayRecordingId');
+        return null;
+      }
+
+      console.log('📸 Fetching current day recording for job:', jobNumber);
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/recordings`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error('📸 Failed to fetch recordings:', result.error);
+        return null;
+      }
+
+      // Find today's recording for this job number
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+      
+      const dayRecordings = result.dayRecordings || [];
+      const todaysRecording = dayRecordings.find((rec: any) => {
+        const recordingDate = rec.date ? new Date(rec.date).toISOString().split('T')[0] : null;
+        return rec.jobNumber === jobNumber && recordingDate === todayStr;
+      });
+
+      if (todaysRecording?.id) {
+        console.log('📸 Found current day recording ID:', todaysRecording.id);
+        return todaysRecording.id;
+      } else {
+        console.log('📸 No current day recording found for job:', jobNumber);
+        return null;
+      }
+    } catch (error) {
+      console.error('📸 Failed to get current day recording ID:', error);
+      return null;
+    }
+  },
+
   // Upload a single image to AWS S3 via backend
   async uploadImage(
     imageUri: string,
     jobNumber: string,
     metadata?: any,
-    token?: string
+    token?: string,
+    recordingId?: string
   ): Promise<ImageUploadResponse> {
     try {
       if (!token) {
@@ -55,12 +104,18 @@ export const imageService = {
       // Add job number
       formData.append('jobNumber', jobNumber);
       
+      // Add recording ID if provided
+      if (recordingId) {
+        formData.append('recordingId', recordingId);
+      }
+      
       // Add metadata if provided
       if (metadata) {
         formData.append('metadata', JSON.stringify(metadata));
       }
 
       console.log('📸 Uploading image for job:', jobNumber);
+      console.log('📸 Recording ID:', recordingId);
       console.log('📸 Image URI:', imageUri);
       console.log('📸 Metadata:', metadata);
       console.log('📸 API Base URL:', API_CONFIG.BASE_URL);
@@ -90,6 +145,7 @@ export const imageService = {
       console.error('📸 Image upload failed:', error);
       return {
         success: false,
+        message: 'Upload failed',
         error: error instanceof Error ? error.message : 'Upload failed',
       };
     }

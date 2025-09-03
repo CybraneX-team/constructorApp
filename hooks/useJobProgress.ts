@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { jobProgressService, ProcessedJobProgress } from '../services/jobProgressService';
 
 interface UseJobProgressResult {
@@ -8,7 +8,7 @@ interface UseJobProgressResult {
   refreshProgress: () => Promise<void>;
 }
 
-export const useJobProgress = (jobNumber?: string): UseJobProgressResult => {
+export const useJobProgress = (jobNumber?: string, token?: string): UseJobProgressResult => {
   const [jobProgress, setJobProgress] = useState<ProcessedJobProgress | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,16 +26,16 @@ export const useJobProgress = (jobNumber?: string): UseJobProgressResult => {
     setError(null);
     
     try {
-      const progress = await jobProgressService.getJobProgress(currentJobNumber);
+      const progress = await jobProgressService.getJobProgress(currentJobNumber, token);
       setJobProgress(progress);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch job progress';
       setError(errorMessage);
-      console.error('Error fetching job progress:', err);
+      console.error('❌ Error fetching job progress:', err);
     } finally {
       setLoading(false);
     }
-  }, [jobNumber]);
+  }, [jobNumber, token]);
 
   const refreshProgress = useCallback(async () => {
     await fetchJobProgress();

@@ -47,18 +47,26 @@ class JobProgressService {
     console.log('🔧 JobProgressService initialized with URL:', this.baseUrl);
   }
 
-  async getJobProgress(jobNumber: string): Promise<ProcessedJobProgress> {
+  async getJobProgress(jobNumber: string, token?: string): Promise<ProcessedJobProgress> {
     const apiUrl = `${this.baseUrl}/progress?jobNumber=${encodeURIComponent(jobNumber)}`;
     console.log('🔍 Fetching job progress for:', jobNumber, 'from URL:', apiUrl);
     
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add authentication header if token is provided
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('🔑 Including authorization token in job progress request');
+      } else {
+        console.warn('⚠️ No authentication token provided for job progress request');
+      }
+
       const response = await fetch(apiUrl, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          // Add authentication headers if needed
-          // 'Authorization': `Bearer ${token}`,
-        },
+        headers,
       });
 
       console.log('📱 Response status:', response.status);

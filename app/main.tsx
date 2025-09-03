@@ -1,39 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Dimensions,
-  Platform,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  View,
+    Dimensions,
+    Platform,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    View,
 } from 'react-native';
-import { customAlert, successHaptic, infoHaptic } from '../services/customAlertService';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
-import Animated from 'react-native-reanimated';
+import Animated, { useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import ProtectedRoute from '../components/ProtectedRoute';
+import { customAlert, infoHaptic, successHaptic } from '../services/customAlertService';
 
 // Custom hook and components
+import * as ImagePicker from 'expo-image-picker';
 import { AnimatedTitle } from '../components/AnimatedTitle';
 import CircularProgress from '../components/CircularProgress';
+import DescriptionPrompt from '../components/DescriptionPrompt';
+import MediaOptionsModal from '../components/MediaOptionsModal';
 import { RecordButton } from '../components/RecordButton';
 import RecordDetailView from '../components/RecordDetailView';
 import RecordsList from '../components/RecordsList';
 import SearchOverlay from '../components/SearchOverlay';
-import { UploadStatus } from '../components/UploadStatus';
 import { ToastMessage } from '../components/ToastMessage';
-import { useVoiceMemos } from '../hooks/useVoiceMemos';
-import * as ImagePicker from 'expo-image-picker';
-import MediaOptionsModal from '../components/MediaOptionsModal';
-import DescriptionPrompt from '../components/DescriptionPrompt';
+import { UploadStatus } from '../components/UploadStatus';
 import WorkProgressModal from '../components/WorkProgressModal';
+import { useAuth } from '../contexts/AuthContext';
 import { useModalStack } from '../contexts/ModalStackContext';
 import { useSite } from '../contexts/SiteContext';
-import { useAuth } from '../contexts/AuthContext';
-import { useSharedValue, withTiming, withSpring } from 'react-native-reanimated';
-import { useJobProgress } from '../hooks/useJobProgress';
-import { useCircularProgressData } from '../hooks/useCircularProgressData';
-import RefreshOverlay from '../components/RefreshOverlay';
+import { useVoiceMemos } from '../hooks/useVoiceMemos';
+
 import InitialLoader from '../components/InitialLoader';
+import RefreshOverlay from '../components/RefreshOverlay';
+import { useCircularProgressData } from '../hooks/useCircularProgressData';
+import { useJobProgress } from '../hooks/useJobProgress';
 import { imageService } from '../services/imageService';
 
 const VoiceMemosScreen = () => {
@@ -54,7 +54,7 @@ const VoiceMemosScreen = () => {
   } = useCircularProgressData();
   
   // Keep original job progress for other functionality
-  const { jobProgress, loading: jobProgressLoading, error: jobProgressError, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151');
+  const { jobProgress, loading: jobProgressLoading, error: jobProgressError, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151', token || undefined);
 
 
   
@@ -325,6 +325,10 @@ const VoiceMemosScreen = () => {
       setRefreshMessage('Uploading images...');
       setRefreshSuccess(false);
 
+      // First, get the current day recording ID for this job
+      const currentRecordingId = await imageService.getCurrentDayRecordingId(selectedSite.siteId, token || undefined);
+      console.log('📸 Current day recording ID:', currentRecordingId);
+
       // Upload each image
       const uploadPromises = selectedImages.map(async (imageUri, index) => {
         console.log(`📸 Uploading image ${index + 1}/${selectedImages.length}:`, imageUri);
@@ -340,7 +344,8 @@ const VoiceMemosScreen = () => {
           imageUri,
           selectedSite.siteId,
           metadata,
-          token || undefined
+          token || undefined,
+          currentRecordingId || undefined
         );
 
         if (!result.success) {

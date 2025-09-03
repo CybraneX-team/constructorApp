@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
-import { cacheService, CachedProgressData } from '../services/cacheService';
+import { CachedProgressData, cacheService } from '../services/cacheService';
 import { useJobProgress } from './useJobProgress';
 import { useVoiceMemos } from './useVoiceMemos';
 
@@ -23,7 +23,7 @@ export const useCircularProgressData = (): CircularProgressData => {
   const [cachedData, setCachedData] = useState<CachedProgressData | null>(null);
 
   // Get job progress and recordings data
-  const { jobProgress, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151');
+  const { jobProgress, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151', token || undefined);
   const { recordsList, fetchRecordings } = useVoiceMemos();
 
   // Check if it's first time login
