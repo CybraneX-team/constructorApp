@@ -6,9 +6,9 @@ import { RecordDetail } from '../components/types';
 import { Platform, Alert } from 'react-native';
 
 // Generate and share PDF
-export const generateAndSharePDF = async (record: RecordDetail): Promise<void> => {
+export const generateAndSharePDF = async (record: RecordDetail, includeRates: boolean = true): Promise<void> => {
   try {
-    const htmlContent = buildDailyWorkSummaryHtml(record);
+    const htmlContent = buildDailyWorkSummaryHtml(record, includeRates);
     const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
     if (uri) {
@@ -24,9 +24,9 @@ export const generateAndSharePDF = async (record: RecordDetail): Promise<void> =
 };
 
 // Generate and download PDF to device
-export const generateAndDownloadPDF = async (record: RecordDetail): Promise<void> => {
+export const generateAndDownloadPDF = async (record: RecordDetail, includeRates: boolean = true): Promise<void> => {
   try {
-    const htmlContent = buildDailyWorkSummaryHtml(record);
+    const htmlContent = buildDailyWorkSummaryHtml(record, includeRates);
     const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
     if (!uri) {
@@ -101,7 +101,7 @@ const saveToAppDocuments = async (sourceUri: string, filename: string): Promise<
 // Legacy function for backward compatibility
 export const generatePDFFromRecord = generateAndSharePDF;
 
-function buildDailyWorkSummaryHtml(record: RecordDetail): string {
+function buildDailyWorkSummaryHtml(record: RecordDetail, includeRates: boolean = true): string {
   return `
     <!DOCTYPE html>
     <html>
@@ -239,7 +239,7 @@ function buildDailyWorkSummaryHtml(record: RecordDetail): string {
           </div>
 
           <div class="section-header">Labor</div>
-          ${renderLaborTable(record)}
+          ${renderLaborTable(record, includeRates)}
 
           <div class="section-header">Subcontractors</div>
           ${renderSubcontractorTable(record)}
@@ -248,10 +248,10 @@ function buildDailyWorkSummaryHtml(record: RecordDetail): string {
           <div class="activities">${escapeHtml(record.dailyActivities || '')}</div>
 
           <div class="section-header">Materials Deliveries</div>
-          ${renderMaterialsTable(record)}
+          ${renderMaterialsTable(record, includeRates)}
 
           <div class="section-header">Equipment</div>
-          ${renderEquipmentTable(record)}
+          ${renderEquipmentTable(record, includeRates)}
 
           ${record.images && record.images.length > 0 ? `
             <div class="section-header">Site Photos</div>
@@ -283,7 +283,7 @@ function escapeHtml(text: string): string {
 }
 
 // LABOR TABLE
-function renderLaborTable(record: RecordDetail): string {
+function renderLaborTable(record: RecordDetail, includeRates: boolean = true): string {
   const rows: Array<{ title: string; data: any }> = [
     { title: 'Manager', data: record.laborData.manager },
     { title: 'Foreman', data: record.laborData.foreman },
@@ -299,8 +299,8 @@ function renderLaborTable(record: RecordDetail): string {
         <td class="num">${escapeHtml(data.startTime || '')}</td>
         <td class="num">${escapeHtml(data.finishTime || '')}</td>
         <td class="num">${escapeHtml(data.hours ?? '')}</td>
-        <td class="num">${escapeHtml(data.rate ?? '')}</td>
-        <td class="num">${escapeHtml(data.total ?? '')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.rate ?? '') : '-')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.total ?? '') : '-')}</td>
       </tr>
     `)
     .join('');
@@ -321,7 +321,7 @@ function renderLaborTable(record: RecordDetail): string {
         ${body}
         <tr class="totals-row">
           <td colspan="5">Total</td>
-          <td class="num">${computeColumnTotal(rows.map(r => r.data.total))}</td>
+          <td class="num">${includeRates ? computeColumnTotal(rows.map(r => r.data.total)) : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -351,7 +351,7 @@ function renderSubcontractorTable(record: RecordDetail): string {
 }
 
 // MATERIALS TABLE
-function renderMaterialsTable(record: RecordDetail): string {
+function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true): string {
   const items = [
     { name: 'Argos Class 4 4500 PSI concrete', data: record.materialsDeliveries.argosClass4 },
     { name: 'Expansion Joint material', data: record.materialsDeliveries.expansionJoint },
@@ -363,9 +363,9 @@ function renderMaterialsTable(record: RecordDetail): string {
         <td>${escapeHtml(name)}</td>
         <td class="num">${escapeHtml(data.qty || '')}</td>
         <td>${escapeHtml(data.uom || '')}</td>
-        <td class="num">${escapeHtml(data.unitRate ?? '')}</td>
-        <td class="num">${escapeHtml(data.tax ?? '')}</td>
-        <td class="num">${escapeHtml(data.total ?? '')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.unitRate ?? '') : '-')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.tax ?? '') : '-')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.total ?? '') : '-')}</td>
       </tr>
     `)
     .join('');
@@ -386,7 +386,7 @@ function renderMaterialsTable(record: RecordDetail): string {
         ${body}
         <tr class="totals-row">
           <td colspan="5">Totals</td>
-          <td class="num">${computeColumnTotal(items.map(i => i.data.total))}</td>
+          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data.total)) : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -394,7 +394,7 @@ function renderMaterialsTable(record: RecordDetail): string {
 }
 
 // EQUIPMENT TABLE
-function renderEquipmentTable(record: RecordDetail): string {
+function renderEquipmentTable(record: RecordDetail, includeRates: boolean = true): string {
   const items = [
     { name: 'Truck', data: record.equipment.truck },
     { name: '14k EQUIPMENT TRAILER', data: record.equipment.equipmentTrailer },
@@ -409,8 +409,8 @@ function renderEquipmentTable(record: RecordDetail): string {
       <tr>
         <td>${escapeHtml(name)}</td>
         <td class="num">${escapeHtml(String(data.days ?? ''))}</td>
-        <td class="num">${escapeHtml(data.monthlyRate ?? '')}</td>
-        <td class="num">${escapeHtml(data.itemRate ?? '')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.monthlyRate ?? '') : '-')}</td>
+        <td class="num">${escapeHtml(includeRates ? (data.itemRate ?? '') : '-')}</td>
       </tr>
     `)
     .join('');
@@ -429,7 +429,7 @@ function renderEquipmentTable(record: RecordDetail): string {
         ${body}
         <tr class="totals-row">
           <td colspan="3">Totals</td>
-          <td class="num">${computeColumnTotal(items.map(i => i.data.itemRate))}</td>
+          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data.itemRate)) : '-'}</td>
         </tr>
       </tbody>
     </table>

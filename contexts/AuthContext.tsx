@@ -15,10 +15,9 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string, superPassword?: string) => Promise<void>;
+  login: (email: string, password: string, superPassword?: string) => Promise<User>;
   signup: (email: string, password: string, isAdmin: boolean, accessKey?: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshToken: () => Promise<string | null>;
   isLoading: boolean;
 }
 
@@ -63,9 +62,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const login = async (email: string, password: string, superPassword?: string) => {
+  const login = async (email: string, password: string, superPassword?: string): Promise<User> => {
     try {
-      const response = await axiosInstance.post('/login', {
+      const response = await axiosInstance.post('/auth/signin', {
         email,
         password,
         superPassword,
@@ -91,6 +90,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Set default authorization header
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
+      return userData;
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed');
     }
@@ -98,9 +98,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signup = async (email: string, password: string, isAdmin: boolean, accessKey?: string) => {
     try {
-      console.log('Attempting signup with:', { email, isAdmin, hasAccessKey: !!accessKey, apiUrl: `${API_BASE_URL}/signup` });
+      console.log('Attempting signup with:', { email, isAdmin, hasAccessKey: !!accessKey, apiUrl: `${API_BASE_URL}/auth/signup` });
       
-      const response = await axiosInstance.post('/signup', {
+      const response = await axiosInstance.post('/auth/signup', {
         email,
         password,
         isAdmin,
@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
-        url: `${API_BASE_URL}/signup`
+        url: `${API_BASE_URL}/auth/signup`
       });
       
       if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
@@ -126,49 +126,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const refreshToken = async (): Promise<string | null> => {
-    try {
-      if (!token) {
-        console.log('No token available for refresh');
-        return null;
-      }
-
-      console.log('  Attempting to refresh token...');
-      const response = await axiosInstance.post('/refresh', {});
-
-      const { token: newToken } = response.data;
-      
-      if (newToken) {
-        // Decode the new token to get user info
-        const tokenPayload = JSON.parse(atob(newToken.split('.')[1]));
-        const userData: User = {
-          email: tokenPayload.email,
-          role: tokenPayload.role,
-        };
-
-        // Update state
-        setToken(newToken);
-        setUser(userData);
-
-        // Update AsyncStorage
-        await AsyncStorage.setItem('authToken', newToken);
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
-
-        // Update default authorization header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-
-        console.log('✅ Token refreshed successfully');
-        return newToken;
-      }
-      
-      return null;
-    } catch (error: any) {
-      console.error('❌ Token refresh failed:', error.response?.data || error.message);
-      // If refresh fails, log out the user
-      await logout();
-      return null;
-    }
-  };
 
   const logout = async () => {
     try {
@@ -206,7 +163,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     signup,
     logout,
-    refreshToken,
     isLoading,
   };
 

@@ -60,12 +60,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      if (isAdmin) {
-        await login(email, '', superPassword);
+      const user = await login(email, password, isAdmin ? superPassword : undefined);
+      
+      // Redirect based on user role
+      if (user.role === 'admin') {
+        router.replace('/admin-panel');
       } else {
-        await login(email, password, undefined);
+        router.replace('/site-selection');
       }
-      router.replace('/site-selection');
     } catch (error: any) {
       customAlert.error('Login Failed', error.message);
     } finally {

@@ -49,8 +49,8 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
   }, [fadeAnim, slideAnim]);
 
   const handleSignup = async () => {
-    if (!email || (!isAdmin && !password) || (isAdmin && (!superPassword || !accessKey))) {
-      customAlert.error('Error', 'Please fill in all required fields');
+    if (!email || (!isAdmin && !password) || (isAdmin && !superPassword)) {
+      customAlert.error('Error', 'Please fill in email and password');
       return;
     }
 
@@ -62,7 +62,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      await signup(email, isAdmin ? superPassword : password, isAdmin, isAdmin ? accessKey : undefined);
+      await signup(email, isAdmin ? superPassword : password, false, undefined);
       customAlert.success('Success', 'Account created successfully! Please login.');
       router.push('/login');
     } catch (error: any) {

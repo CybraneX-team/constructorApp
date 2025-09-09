@@ -6,18 +6,21 @@
 export const config = {
   // Backend Configuration
   backend: {
-    // Replace with your actual backend URL
-  baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL,
+    // New Rust backend URL
+    baseUrl: 'http://98.80.71.172:3000',
     
-    // API Endpoints
+    // API Endpoints - Updated for Rust backend
     endpoints: {
       recordings: {
-        save: '/recordings/save',
+        save: '/recording/upload',
+        list: '/recording/day-logs',
+        get: '/recording/day',
       },
       auth: {
-        login: '/auth/login',
-        register: '/auth/register',
-        refresh: '/auth/refresh',
+        login: '/auth/signin',
+        register: '/auth/signup',
+        forgotPassword: '/auth/forgot-password',
+        resetPassword: '/auth/reset-password',
       },
     },
     
@@ -87,38 +90,18 @@ export const config = {
 export const getEnvironmentConfig = () => {
   const env = process.env.NODE_ENV || 'development';
   
-  switch (env) {
-    case 'production':
-      return {
-        ...config,
-        backend: {
-          ...config.backend,
-          baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || 'https://your-production-api.com',
-        },
-        app: {
-          ...config.app,
-          debug: false,
-        },
-      };
-    
-    case 'staging':
-      return {
-        ...config,
-        backend: {
-          ...config.backend,
-          baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || 'https://staging-api.your-domain.com',
-        },
-      };
-    
-    default: // development
-      return {
-        ...config,
-        backend: {
-          ...config.backend,
-          baseUrl: process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL,
-        },
-      };
-  }
+  // For all environments, use the same Rust backend URL
+  return {
+    ...config,
+    backend: {
+      ...config.backend,
+      baseUrl: 'http://98.80.71.172:3000',
+    },
+    app: {
+      ...config.app,
+      debug: env === 'development',
+    },
+  };
 };
 
 export default config;

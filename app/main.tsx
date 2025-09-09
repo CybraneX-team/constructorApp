@@ -588,7 +588,7 @@ const VoiceMemosScreen = () => {
             onSearchPress={handleSearchPress}
             onMoveToSearchCircle={handleMoveToSearchCircle}
             onCameraPress={openMediaOptions}
-            onRefreshPress={handleRefreshAllData}
+            onHomePress={() => {}} // Home button navigation is handled internally
           />
 
           {(() => {

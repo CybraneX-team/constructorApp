@@ -26,49 +26,21 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh and errors
+// Response interceptor to handle errors
 axiosInstance.interceptors.response.use(
   (response) => {
     return response;
   },
   async (error) => {
-    const originalRequest = error.config;
-
-    // If the error is 401 and we haven't already tried to refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
+    // If the error is 401, the user needs to login again
+    if (error.response?.status === 401) {
+      console.log('Unauthorized access - user needs to login again');
+      // Clear stored auth data
       try {
-        const currentToken = await AsyncStorage.getItem('authToken');
-        if (currentToken) {
-          // Try to refresh the token
-          const refreshResponse = await axios.post(
-            `${API_BASE_URL}/refresh`,
-            {},
-            {
-              headers: {
-                Authorization: `Bearer ${currentToken}`,
-              },
-            }
-          );
-
-          const { token: newToken } = refreshResponse.data;
-          
-          if (newToken) {
-            // Save new token
-            await AsyncStorage.setItem('authToken', newToken);
-            
-            // Update the authorization header for the failed request
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            
-            // Retry the original request
-            return axiosInstance(originalRequest);
-          }
-        }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        // Token refresh failed, user needs to login again
-        // The logout will be handled by the component that catches this error
+        await AsyncStorage.removeItem('authToken');
+        await AsyncStorage.removeItem('user');
+      } catch (storageError) {
+        console.error('Error clearing auth data:', storageError);
       }
     }
 

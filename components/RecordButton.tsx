@@ -66,7 +66,7 @@ interface RecordButtonProps {
   onSearchPress?: () => void;
   onMoveToSearchCircle?: () => void;
   onCameraPress?: () => void;
-  onRefreshPress?: () => void;
+  onHomePress?: () => void;
 }
 
 export const RecordButton: React.FC<RecordButtonProps> = ({
@@ -79,7 +79,7 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
   onSearchPress,
   onMoveToSearchCircle,
   onCameraPress,
-  onRefreshPress,
+  onHomePress,
 }) => {
   const { logout } = useAuth();
   const [isRecordingStarted, setIsRecordingStarted] = React.useState(false);
@@ -130,6 +130,13 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
     // Move to the Search circle, then open search overlay/modal
     onMoveToSearchCircle?.();
     onSearchPress?.();
+  };
+
+  const handleHome = () => {
+    // Trigger haptic feedback for home action
+    triggerHaptic('continuous', 0.3); // Light haptic for home
+    // Navigate to site selection screen
+    router.push('/site-selection');
   };
 
   const handlePressIn = () => {
@@ -216,16 +223,12 @@ export const RecordButton: React.FC<RecordButtonProps> = ({
 
   return (
     <View style={styles.recordSection}>
-      {/* Refresh Button */}
+      {/* Home Button */}
       <TouchableOpacity 
-        style={styles.refreshButton} 
-        onPress={() => {
-          // Trigger haptic feedback for refresh action
-          triggerHaptic('continuous', 0.3); // Light haptic for refresh
-          onRefreshPress?.();
-        }}
+        style={styles.homeButton} 
+        onPress={handleHome}
       >
-        <MaterialIcons name="refresh" size={24} color="#8E8E93" />
+        <MaterialIcons name="home" size={24} color="#8E8E93" />
       </TouchableOpacity>
       
       {/* Logout Button */}
@@ -390,7 +393,7 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     textAlign: 'center',
   },
-  refreshButton: {
+  homeButton: {
     position: 'absolute',
     top: 20,
     left: 20, // Position to the left of screen

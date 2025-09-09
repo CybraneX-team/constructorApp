@@ -19,8 +19,10 @@ import { RecordDetailViewProps } from './types';
 import { generateAndSharePDF, generateAndDownloadPDF } from '../utils/pdfGenerator';
 import { useAuth } from '../contexts/AuthContext';
 import { recordingService } from '../services/recordingService';
+import { config } from '../config/app.config';
 import { Ionicons } from '@expo/vector-icons';
 import EditFieldModal, { EditFieldModalProps } from './EditFieldModal';
+import ExportOptionsModal from './ExportOptionsModal';
 import { 
   EditableLaborCard, 
   EditableSubcontractorCard, 
@@ -616,7 +618,10 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
-  const [resolvedRecord, setResolvedRecord] = useState(record);
+  const [resolvedRecord, setResolvedRecord] = useState<any>(null); // Start with null to show loader
+  const [isLoading, setIsLoading] = useState(true); // Main loading state
+  const [showExportOptions, setShowExportOptions] = useState(false);
+  const [exportAction, setExportAction] = useState<'share' | 'download' | null>(null);
   const [editModal, setEditModal] = useState<{
     visible: boolean;
     fieldType: EditFieldModalProps['fieldType'];
@@ -638,51 +643,84 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
 
     const loadSummary = async () => {
       try {
-        console.log('🔍 RecordDetailView - Loading summary for record ID:', record?.id);
+        console.log('🔍 RecordDetailView - Loading fresh data for record ID:', record?.id);
         
-        if (!record?.id) {
-          console.log('🔍 RecordDetailView - Missing record ID, skipping summary load');
+        if (!record?.id || !token) {
+          console.log('🔍 RecordDetailView - Missing record ID or token, skipping data load');
+          setIsLoading(false);
           return;
         }
         
-        // Use the existing structuredSummary data from the record instead of making API call
+        // Always fetch fresh data from the backend to ensure we have the latest updates
+        console.log('🔍 RecordDetailView - Fetching fresh recording data from backend...');
+        
+        try {
+          // Use the backend GET /recordings/:id endpoint to get fresh data
+          const response = await fetch(`${config.backend.baseUrl}/recordings/${encodeURIComponent(record.id)}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json',
+            },
+          });
+          
+          if (!response.ok) {
+            console.error('🔍 Failed to fetch fresh recording data:', response.status);
+            throw new Error(`Failed to fetch recording: ${response.status}`);
+          }
+          
+          const result = await response.json();
+          console.log('🔍 RecordDetailView - Fresh recording data:', JSON.stringify(result, null, 2));
+          
+          if (result.success && result.dayRecording) {
+            const freshRecord = {
+              ...result.dayRecording,
+              // Ensure we have the updated structuredSummary
+              structuredSummary: result.dayRecording.structuredSummary || result.dayRecording.customStructuredSummary || null
+            };
+            
+            console.log('🔍 RecordDetailView - Using fresh data with structuredSummary:', JSON.stringify(freshRecord.structuredSummary, null, 2));
+            const mapped = mapSummaryToRecordDetail(freshRecord, freshRecord.structuredSummary);
+            console.log('🔍 RecordDetailView - Mapped record detail from fresh data:', JSON.stringify(mapped, null, 2));
+            
+            if (isMounted) {
+              console.log('🔍 RecordDetailView - Setting resolved record from fresh data');
+              setResolvedRecord(mapped);
+            }
+            return;
+          }
+        } catch (fetchError) {
+          console.error('🔍 RecordDetailView - Failed to fetch fresh data, falling back to passed data:', fetchError);
+        }
+        
+        // Fallback: use passed record data if fresh fetch fails
+        console.log('🔍 RecordDetailView - Using passed record data as fallback');
         if (record.structuredSummary) {
-          console.log('🔍 RecordDetailView - Using existing structuredSummary data');
           const mapped = mapSummaryToRecordDetail(record, record.structuredSummary);
-          console.log('🔍 RecordDetailView - Mapped record detail:', JSON.stringify(mapped, null, 2));
           
           if (isMounted) {
-            console.log('🔍 RecordDetailView - Setting resolved record');
             setResolvedRecord(mapped);
           }
         } else {
-          console.log('🔍 RecordDetailView - No structuredSummary available, trying API call');
-          
-          if (!token) {
-            console.log('🔍 RecordDetailView - No token available for API call');
-            return;
-          }
-          
-          console.log('🔍 RecordDetailView - Calling recordingService.getRecordingSummary...');
+          // Last resort: try the summary API endpoint
+          console.log('🔍 RecordDetailView - Trying summary API endpoint as last resort...');
           const res = await recordingService.getRecordingSummary(record.id, token);
-          console.log('🔍 RecordDetailView - Summary API response:', JSON.stringify(res, null, 2));
           
-          if (!res.success || !res.summary) {
-            console.log('🔍 RecordDetailView - Summary API failed or no summary data');
-            return;
-          }
-          
-          console.log('🔍 RecordDetailView - Mapping summary to record detail...');
-          const mapped = mapSummaryToRecordDetail(record, res.summary);
-          console.log('🔍 RecordDetailView - Mapped record detail:', JSON.stringify(mapped, null, 2));
-          
-          if (isMounted) {
-            console.log('🔍 RecordDetailView - Setting resolved record');
-            setResolvedRecord(mapped);
+          if (res.success && res.summary) {
+            const mapped = mapSummaryToRecordDetail(record, res.summary);
+            
+            if (isMounted) {
+              setResolvedRecord(mapped);
+            }
           }
         }
       } catch (e) {
-        console.error('🔍 RecordDetailView - Failed to resolve summary for record', record.id, e);
+        console.error('🔍 RecordDetailView - Failed to load data for record', record.id, e);
+      } finally {
+        // Clear loading state
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -699,28 +737,59 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
     opacity: detailOpacity.value,
   }));
 
-  const handleSharePDF = async () => {
+  const handleSharePDF = () => {
+    setExportAction('share');
+    setShowExportOptions(true);
+  };
+
+  const handleDownloadPDF = () => {
+    setExportAction('download');
+    setShowExportOptions(true);
+  };
+
+  const handleExportWithRates = async () => {
     try {
-      setIsGeneratingPDF(true);
-      await generateAndSharePDF(resolvedRecord);
+      if (exportAction === 'share') {
+        setIsGeneratingPDF(true);
+        await generateAndSharePDF(resolvedRecord, true);
+      } else if (exportAction === 'download') {
+        setIsDownloadingPDF(true);
+        await generateAndDownloadPDF(resolvedRecord, true);
+      }
     } catch (error) {
-      console.error('Error sharing PDF:', error);
-      customAlert.error('Error', 'Failed to share PDF. Please try again.');
+      console.error('Error exporting PDF with rates:', error);
+      customAlert.error('Error', 'Failed to export PDF. Please try again.');
     } finally {
       setIsGeneratingPDF(false);
+      setIsDownloadingPDF(false);
+      setShowExportOptions(false);
+      setExportAction(null);
     }
   };
 
-  const handleDownloadPDF = async () => {
+  const handleExportWithoutRates = async () => {
     try {
-      setIsDownloadingPDF(true);
-      await generateAndDownloadPDF(resolvedRecord);
+      if (exportAction === 'share') {
+        setIsGeneratingPDF(true);
+        await generateAndSharePDF(resolvedRecord, false);
+      } else if (exportAction === 'download') {
+        setIsDownloadingPDF(true);
+        await generateAndDownloadPDF(resolvedRecord, false);
+      }
     } catch (error) {
-      console.error('Error downloading PDF:', error);
-      customAlert.error('Error', 'Failed to download PDF. Please try again.');
+      console.error('Error exporting PDF without rates:', error);
+      customAlert.error('Error', 'Failed to export PDF. Please try again.');
     } finally {
+      setIsGeneratingPDF(false);
       setIsDownloadingPDF(false);
+      setShowExportOptions(false);
+      setExportAction(null);
     }
+  };
+
+  const handleCloseExportOptions = () => {
+    setShowExportOptions(false);
+    setExportAction(null);
   };
 
   const handleEditField = (fieldType: EditFieldModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => {
@@ -743,11 +812,15 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
     }
 
     try {
+      // Get current structured summary to pass to the service
+      const currentSummary = resolvedRecord.structuredSummary || {};
+      
       const result = await recordingService.updateRecordingField(
         resolvedRecord.id,
         editModal.fieldPath,
         value,
-        token
+        token,
+        currentSummary
       );
 
       if (result.success) {
@@ -758,11 +831,11 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         
         // Navigate to the parent object
         for (let i = 0; i < pathParts.length - 1; i++) {
-          current = current[pathParts[i]];
+          current = (current as any)[pathParts[i]];
         }
         
         // Set the final value
-        current[pathParts[pathParts.length - 1]] = value;
+        (current as any)[pathParts[pathParts.length - 1]] = value;
         
         setResolvedRecord(updatedRecord);
         return { success: true };
@@ -778,11 +851,11 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
           
           // Navigate to the parent object
           for (let i = 0; i < pathParts.length - 1; i++) {
-            current = current[pathParts[i]];
+            current = (current as any)[pathParts[i]];
           }
           
           // Set the final value
-          current[pathParts[pathParts.length - 1]] = value;
+          (current as any)[pathParts[pathParts.length - 1]] = value;
           
           setResolvedRecord(updatedRecord);
           
@@ -809,14 +882,6 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   const handleDeleteImage = async (imageId: string) => {
     console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_CLICKED - ${imageId}`);
     
-    // For now, show a message that image deletion is not yet supported by the backend
-    customAlert.alert(
-      'Feature Coming Soon',
-      'Image deletion functionality will be available in a future update once the backend API supports it. The delete button is ready and functional on the frontend side.'
-    );
-
-    // Uncomment this code once the backend API supports image deletion:
-    /*
     if (!token) {
       customAlert.error('Error', 'No authentication token available');
       return;
@@ -830,7 +895,6 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
           console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_START - ${imageId}`);
           
           const result = await recordingService.deleteRecordingImage(
-            resolvedRecord.id,
             imageId,
             token
           );
@@ -855,7 +919,6 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         }
       }
     );
-    */
   };
 
   return (
@@ -863,7 +926,14 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
       <TouchableOpacity style={styles.recordDetailBackdrop} onPress={onClose} activeOpacity={1} />
       
       <Animated.View style={[styles.recordDetailContainer, detailStyle]}>
-        <View style={styles.recordDetailHeader}>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Loading latest data...</Text>
+          </View>
+        ) : resolvedRecord ? (
+          <>
+            <View style={styles.recordDetailHeader}>
           <View style={styles.headerLeftSection}>
             <Text style={styles.recordDetailTitle}>Daily Work Summary</Text>
             <Text style={styles.recordDetailDate}>{resolvedRecord.date}</Text>
@@ -916,6 +986,22 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
             />
           )}
         />
+          </>
+        ) : (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Failed to load recording data</Text>
+            <TouchableOpacity 
+              style={styles.retryButton} 
+              onPress={() => {
+                setIsLoading(true);
+                // Trigger reload by updating a dependency
+                setEditModal({ ...editModal });
+              }}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Animated.View>
       
       {/* EditFieldModal - positioned at same level as RecordDetailView */}
@@ -927,6 +1013,15 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         fieldLabel={editModal.fieldLabel}
         initialValue={editModal.initialValue}
         placeholder={editModal.placeholder}
+      />
+      
+      {/* ExportOptionsModal */}
+      <ExportOptionsModal
+        visible={showExportOptions}
+        onClose={handleCloseExportOptions}
+        onExportWithRates={handleExportWithRates}
+        onExportWithoutRates={handleExportWithoutRates}
+        isGenerating={isGeneratingPDF || isDownloadingPDF}
       />
     </Animated.View>
   );
@@ -1497,6 +1592,44 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  
+  // Loading and Error States
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#007AFF',
+    marginTop: 16,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#FF3B30',
+    marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

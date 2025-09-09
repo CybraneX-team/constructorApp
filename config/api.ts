@@ -1,19 +1,18 @@
 // API Configuration
 const API_CONFIG = {
-  // Your deployed backend URL on Render
-  BASE_URL: __DEV__ 
-    ? 'http://13.203.216.38:3000'  // Development URL
-  : process.env.EXPO_PUBLIC_BACKEND_URL,  // Use BACKEND_URL from env
+  // New Rust backend URL
+  BASE_URL: 'http://98.80.71.172:3000',
   
-  // API endpoints
+  // API endpoints - Updated for Rust backend
   ENDPOINTS: {
-    RECORDINGS_SAVE: '/recordings/save',
-    RECORDINGS: '/recordings',
-    SEARCH: '/search',
-    TRANSCRIPTIONS: '/transcriptions',
-    LOGIN: '/login',
-    SIGNUP: '/signup',
-    REFRESH: '/refresh',
+    RECORDINGS_SAVE: '/recording/upload',
+    RECORDINGS: '/recording/day-logs',
+    SEARCH: '/recording/search',
+    TRANSCRIPTIONS: '/recording/day',
+    LOGIN: '/auth/signin',
+    SIGNUP: '/auth/signup',
+    FORGOT_PASSWORD: '/auth/forgot-password',
+    RESET_PASSWORD: '/auth/reset-password',
     HEALTH: '/health'
   }
 };

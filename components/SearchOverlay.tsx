@@ -207,7 +207,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   records,
   onRecordClick,
 }) => {
-  const { token, refreshToken } = useAuth(); // Get the auth token and refresh function
+  const { token } = useAuth(); // Get the auth token
   const [inputText, setInputText] = useState("");
   
   // Global message ID counter to ensure unique IDs
@@ -310,24 +310,17 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
       
       let result = await recordingService.searchRecordings(query, token);
       
-      // If we get a 403 error (token expired), try to refresh the token and retry
-      if (!result.success && result.error && result.error.includes('403')) {
-        console.log('  Token may be expired, attempting refresh...');
-        const newToken = await refreshToken();
-        if (newToken) {
-          console.log('✅ Token refreshed, retrying search...');
-          result = await recordingService.searchRecordings(query, newToken);
-        } else {
-          console.log('❌ Token refresh failed');
-          responses.push({
-            id: generateUniqueId(),
-            text: "🔐 Your session has expired. Please log in again to search your recordings.",
-            isUser: false,
-            timestamp: new Date(),
-            type: "text",
-          });
-          return responses;
-        }
+      // If we get a 401/403 error (token expired), user needs to login again
+      if (!result.success && result.error && (result.error.includes('401') || result.error.includes('403'))) {
+        console.log('❌ Token expired, user needs to login again');
+        responses.push({
+          id: generateUniqueId(),
+          text: "🔐 Your session has expired. Please log in again to search your recordings.",
+          isUser: false,
+          timestamp: new Date(),
+          type: "text",
+        });
+        return responses;
       }
       
       if (result.success) {

@@ -717,48 +717,68 @@ class RecordingService {
   }
 
   /**
-   * Update a recording field
+   * Update a recording field by updating the entire structured summary
    * @param recordingId - The recording ID
    * @param fieldPath - The path to the field (e.g., 'laborData.manager', 'dailyActivities')
    * @param value - The new value for the field
+   * @param currentSummary - The current structured summary to update
    * @param token - JWT authentication token
    * @returns Promise with update result
    */
-  async updateRecordingField(recordingId: string, fieldPath: string, value: any, token: string): Promise<{
+  async updateRecordingField(recordingId: string, fieldPath: string, value: any, token: string, currentSummary: any = {}): Promise<{
     success: boolean;
     message?: string;
     error?: string;
   }> {
-    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(recordingId)}/update`;
+    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(recordingId)}/summary`;
     
     try {
-      apiMonitor.startCall(apiUrl, 'PATCH');
+      apiMonitor.startCall(apiUrl, 'PUT');
       console.log(`[${new Date().toISOString()}] 📝 UPDATE_START - ${recordingId} - ${fieldPath}`);
       
+      // Helper function to set a nested field value using dot notation
+      function setNestedValue(obj: any, path: string, value: any) {
+        const keys = path.split('.');
+        let current = obj;
+        
+        for (let i = 0; i < keys.length - 1; i++) {
+          const key = keys[i];
+          if (!(key in current) || typeof current[key] !== 'object' || current[key] === null) {
+            current[key] = {};
+          }
+          current = current[key];
+        }
+        
+        current[keys[keys.length - 1]] = value;
+      }
+      
+      // Create updated summary with the new field value
+      const updatedSummary = JSON.parse(JSON.stringify(currentSummary)); // Deep copy
+      setNestedValue(updatedSummary, fieldPath, value);
+      
       const response = await fetch(apiUrl, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          fieldPath,
-          value,
+          structuredSummary: updatedSummary,
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Update failed response:', errorText);
-        apiMonitor.endCall(apiUrl, 'PATCH', false, `${response.status} ${errorText}`);
+        apiMonitor.endCall(apiUrl, 'PUT', false, `${response.status} ${errorText}`);
         throw new Error(`Update failed: ${response.status} ${errorText}`);
       }
 
       const result = await response.json();
       console.log(`[${new Date().toISOString()}] ✅ UPDATE_SUCCESS - ${recordingId} - ${fieldPath}`);
       
-      apiMonitor.endCall(apiUrl, 'PATCH', true);
+      apiMonitor.endCall(apiUrl, 'PUT', true);
       
       return {
         success: true,
@@ -769,7 +789,7 @@ class RecordingService {
       const errorMessage = error instanceof Error ? error.message : 'Failed to update field';
       console.log(`[${new Date().toISOString()}] ❌ UPDATE_ERROR - ${recordingId} - ${fieldPath} - ${errorMessage}`);
       
-      apiMonitor.endCall(apiUrl, 'PATCH', false, errorMessage);
+      apiMonitor.endCall(apiUrl, 'PUT', false, errorMessage);
       
       return {
         success: false,
@@ -779,49 +799,41 @@ class RecordingService {
   }
 
   /**
-   * Delete an image from a recording using PATCH update method
-   * @param recordingId - The recording ID
+   * Delete an image using the backend DELETE /images/:id endpoint
    * @param imageId - The image ID to delete
    * @param token - JWT authentication token
    * @returns Promise with delete result
    */
-  async deleteRecordingImage(recordingId: string, imageId: string, token: string): Promise<{
+  async deleteRecordingImage(imageId: string, token: string): Promise<{
     success: boolean;
     message?: string;
     error?: string;
   }> {
-    // Use the update endpoint to remove the image from the images array
-    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(recordingId)}/update`;
+    const apiUrl = `${this.baseUrl}/images/${encodeURIComponent(imageId)}`;
     
     try {
-      apiMonitor.startCall(apiUrl, 'PATCH');
-      console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_START - ${recordingId} - ${imageId}`);
+      apiMonitor.startCall(apiUrl, 'DELETE');
+      console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_START - ${imageId}`);
       
       const response = await fetch(apiUrl, {
-        method: 'PATCH',
+        method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          fieldPath: 'images',
-          operation: 'removeItem',
-          value: imageId,
-        }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Delete image failed response:', errorText);
-        apiMonitor.endCall(apiUrl, 'PATCH', false, `${response.status} ${errorText}`);
+        apiMonitor.endCall(apiUrl, 'DELETE', false, `${response.status} ${errorText}`);
         throw new Error(`Delete image failed: ${response.status} ${errorText}`);
       }
 
       const result = await response.json();
-      console.log(`[${new Date().toISOString()}] ✅ DELETE_IMAGE_SUCCESS - ${recordingId} - ${imageId}`);
+      console.log(`[${new Date().toISOString()}] ✅ DELETE_IMAGE_SUCCESS - ${imageId}`);
       
-      apiMonitor.endCall(apiUrl, 'PATCH', true);
+      apiMonitor.endCall(apiUrl, 'DELETE', true);
       
       return {
         success: true,
@@ -830,9 +842,9 @@ class RecordingService {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete image';
-      console.log(`[${new Date().toISOString()}] ❌ DELETE_IMAGE_ERROR - ${recordingId} - ${imageId} - ${errorMessage}`);
+      console.log(`[${new Date().toISOString()}] ❌ DELETE_IMAGE_ERROR - ${imageId} - ${errorMessage}`);
       
-      apiMonitor.endCall(apiUrl, 'PATCH', false, errorMessage);
+      apiMonitor.endCall(apiUrl, 'DELETE', false, errorMessage);
       
       return {
         success: false,
