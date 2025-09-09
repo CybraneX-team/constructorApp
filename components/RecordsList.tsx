@@ -201,7 +201,7 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
 }) => {
   const { selectedSite } = useSite();
   
-  console.log(`[${new Date().toISOString()}] 📂 MODAL_RENDER - ${records?.length || 0} records for site ${selectedSite?.siteId}`);
+  console.log(`[${new Date().toISOString()}] 📂 MODAL_RENDER - ${records?.length || 0} records for site ${selectedSite?.site_id}`);
   
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
@@ -256,8 +256,8 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
             </Text>
             <Text style={styles.recordsSubtitle}>
               {isLoading ? 'Loading recordings...' : 
-               selectedSite?.siteId ? 
-                 `${safeRecords.length} recordings for site ${selectedSite.siteId}` :
+               selectedSite?.site_id ? 
+                 `${safeRecords.length} recordings for site ${selectedSite.site_id}` :
                  `${safeRecords.length} recordings available`}
             </Text>
           </View>
@@ -293,8 +293,8 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No recordings found</Text>
                 <Text style={styles.emptySubtext}>
-                  {selectedSite?.siteId ? 
-                    `No recordings available for site "${selectedSite.name}" (${selectedSite.siteId}). Try recording something new!` :
+                  {selectedSite?.site_id ? 
+                    `No recordings available for site "${selectedSite.name}" (${selectedSite.site_id}). Try recording something new!` :
                     'No recordings available for the selected site. Try recording something new!'}
                 </Text>
               </View>

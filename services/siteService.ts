@@ -3,43 +3,34 @@ import { Site } from '../contexts/SiteContext';
 
 export interface CreateSiteData {
   name: string;
-  siteId: string;
-  companyName: string;
+  site_id: string; // Rust backend uses snake_case
+  company_name: string; // Rust backend uses snake_case
   stakeholders: string[];
-  isActive?: boolean;
+  is_active?: boolean; // Rust backend uses snake_case
 }
 
 export interface UpdateSiteData {
   name?: string;
-  siteId?: string;
-  companyName?: string;
+  site_id?: string; // Rust backend uses snake_case
+  company_name?: string; // Rust backend uses snake_case
   stakeholders?: string[];
-  isActive?: boolean;
+  is_active?: boolean; // Rust backend uses snake_case
 }
 
 export interface SitesResponse {
-  success: boolean;
-  sites: Site[];
-  count: number;
-  error?: string;
+  sites: Site[]; // Rust backend returns sites directly
 }
 
-export interface SiteResponse {
-  success: boolean;
-  site: Site;
-  error?: string;
+export interface SiteResponse extends Site {
+  // Rust backend returns site fields directly
 }
 
 export interface CreateSiteResponse {
-  success: boolean;
-  id: string;
-  site: Site;
-  error?: string;
+  id: string; // Rust backend returns only the id
 }
 
 export interface DeleteSiteResponse {
-  success: boolean;
-  error?: string;
+  // Rust backend returns empty response on successful delete
 }
 
 class SiteService {
@@ -49,7 +40,7 @@ class SiteService {
   async getAllSites(): Promise<SitesResponse> {
     try {
       const response = await axiosInstance.get('/sites');
-      return response.data;
+      return response.data; // Rust backend returns { sites: [...] }
     } catch (error: any) {
       console.error('Error fetching sites:', error);
       throw error;
@@ -62,7 +53,7 @@ class SiteService {
   async getSiteById(siteId: string): Promise<SiteResponse> {
     try {
       const response = await axiosInstance.get(`/sites/${siteId}`);
-      return response.data;
+      return response.data; // Rust backend returns site fields directly
     } catch (error: any) {
       console.error('Error fetching site:', error);
       throw error;
@@ -75,7 +66,7 @@ class SiteService {
   async createSite(siteData: CreateSiteData): Promise<CreateSiteResponse> {
     try {
       const response = await axiosInstance.post('/sites', siteData);
-      return response.data;
+      return response.data; // Rust backend returns { id: "..." }
     } catch (error: any) {
       console.error('Error creating site:', error);
       throw error;
@@ -115,29 +106,29 @@ class SiteService {
     try {
       console.log('🔍 Looking for site with job number:', jobNumber);
       const response = await this.getAllSites();
-      if (response.success && response.sites) {
+      if (response.sites) {
         console.log('🔍 Available sites:', response.sites.map(site => ({
           id: site.id,
           name: site.name,
-          siteId: site.siteId,
-          companyName: site.companyName,
+          site_id: site.site_id,
+          company_name: site.company_name,
           stakeholders: site.stakeholders
         })));
         
         const matchingSite = response.sites.find(site => {
           // Try exact match first
-          if (site.siteId === jobNumber) {
-            console.log(`🔍 Exact match found with siteId: "${site.name}" (${site.siteId})`);
+          if (site.site_id === jobNumber) {
+            console.log(`🔍 Exact match found with site_id: "${site.name}" (${site.site_id})`);
             return true;
           }
           
           // Try partial matches
           const nameMatch = site.name.toLowerCase().includes(jobNumber.toLowerCase());
-          const companyMatch = site.companyName.toLowerCase().includes(jobNumber.toLowerCase());
-          const siteIdPartial = site.siteId.toLowerCase().includes(jobNumber.toLowerCase());
+          const companyMatch = site.company_name.toLowerCase().includes(jobNumber.toLowerCase());
+          const siteIdPartial = site.site_id.toLowerCase().includes(jobNumber.toLowerCase());
           
           const matches = nameMatch || companyMatch || siteIdPartial;
-          console.log(`🔍 Checking site "${site.name}" (${site.siteId}): name=${nameMatch}, company=${companyMatch}, siteId=${siteIdPartial} => ${matches ? 'MATCH' : 'no match'}`);
+          console.log(`🔍 Checking site "${site.name}" (${site.site_id}): name=${nameMatch}, company=${companyMatch}, site_id=${siteIdPartial} => ${matches ? 'MATCH' : 'no match'}`);
           return matches;
         });
         
@@ -145,7 +136,7 @@ class SiteService {
           console.log('🔍 Found matching site:', {
             id: matchingSite.id,
             name: matchingSite.name,
-            siteId: matchingSite.siteId,
+            site_id: matchingSite.site_id,
             stakeholders: matchingSite.stakeholders
           });
         } else {
@@ -207,7 +198,7 @@ class SiteService {
       console.log('📧 Site found:', {
         id: site.id,
         name: site.name,
-        siteId: site.siteId,
+        site_id: site.site_id,
         stakeholders: site.stakeholders
       });
 
@@ -240,18 +231,20 @@ class SiteService {
       
       const siteData: CreateSiteData = {
         name: `Job ${jobNumber}`,
-        siteId: jobNumber,
-        companyName: 'Default Company',
+        site_id: jobNumber,
+        company_name: 'Default Company',
         stakeholders: defaultStakeholders,
-        isActive: true
+        is_active: true
       };
 
       const response = await this.createSite(siteData);
-      if (response.success) {
-        console.log('🏗️ Default site created successfully:', response.site);
-        return response.site;
+      if (response.id) {
+        console.log('🏗️ Default site created successfully with ID:', response.id);
+        // Fetch the created site to return the full object
+        const createdSite = await this.getSiteById(response.id);
+        return createdSite;
       } else {
-        console.error('🏗️ Failed to create default site:', response.error);
+        console.error('🏗️ Failed to create default site');
         return null;
       }
     } catch (error: any) {

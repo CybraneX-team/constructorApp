@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { customAlert } from '../services/customAlertService';
+import { imageService } from '../services/imageService';
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -368,14 +369,14 @@ const DetailContent: React.FC<{
             {record.images.map((image: any, index: number) => (
               <View key={image.id || index} style={styles.imageCard}>
                 <Image 
-                  source={{ uri: image.presignedUrl }} 
+                  source={{ uri: image.url || image.presignedUrl }} 
                   style={styles.siteImage}
                   resizeMode="cover"
                 />
                 <View style={styles.imageInfo}>
                   <View style={styles.imageInfoHeader}>
                     <Text style={styles.imageCaption}>
-                      {image.originalName || `Photo ${index + 1}`}
+                      {image.original_name || image.originalName || `Photo ${index + 1}`}
                     </Text>
                     {onDeleteImage && (
                       <TouchableOpacity 
@@ -655,8 +656,8 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         console.log('🔍 RecordDetailView - Fetching fresh recording data from backend...');
         
         try {
-          // Use the backend GET /recordings/:id endpoint to get fresh data
-          const response = await fetch(`${config.backend.baseUrl}/recordings/${encodeURIComponent(record.id)}`, {
+          // Use the new Rust backend GET /recording/day/:id endpoint to get fresh data
+          const response = await fetch(`${config.backend.baseUrl}/recording/day/${encodeURIComponent(record.id)}`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -665,21 +666,49 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
           });
           
           if (!response.ok) {
-            console.error('🔍 Failed to fetch fresh recording data:', response.status);
-            throw new Error(`Failed to fetch recording: ${response.status}`);
+            console.error('🔍 Failed to fetch fresh day log data:', response.status);
+            throw new Error(`Failed to fetch day log: ${response.status}`);
           }
           
           const result = await response.json();
-          console.log('🔍 RecordDetailView - Fresh recording data:', JSON.stringify(result, null, 2));
+          console.log('🔍 RecordDetailView - Fresh day log data:', JSON.stringify(result, null, 2));
           
-          if (result.success && result.dayRecording) {
+          // The new Rust backend returns the day log directly, not wrapped in success/dayRecording
+          if (result.id) {
             const freshRecord = {
-              ...result.dayRecording,
-              // Ensure we have the updated structuredSummary
-              structuredSummary: result.dayRecording.structuredSummary || result.dayRecording.customStructuredSummary || null
+              ...result,
+              // Map the new field names to expected format
+              jobNumber: result.site, // site ObjectId becomes jobNumber for compatibility
+              date: result.local_date,
+              totalDuration: result.total_duration,
+              recordingCount: result.recordings?.length || 0,
+              // Ensure we have the updated structuredSummary (will be fetched separately)
+              structuredSummary: null // Will be fetched from summary endpoint
             };
             
-            console.log('🔍 RecordDetailView - Using fresh data with structuredSummary:', JSON.stringify(freshRecord.structuredSummary, null, 2));
+            console.log('🔍 RecordDetailView - Using fresh day log data:', JSON.stringify(freshRecord, null, 2));
+            
+            // Now fetch the structured summary separately
+            try {
+              const summaryResponse = await fetch(`${config.backend.baseUrl}/recording/day/${encodeURIComponent(record.id)}/summary`, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json',
+                },
+              });
+              
+              if (summaryResponse.ok) {
+                const summaryResult = await summaryResponse.json();
+                console.log('🔍 RecordDetailView - Fresh summary data:', JSON.stringify(summaryResult, null, 2));
+                freshRecord.structuredSummary = summaryResult.summary || null;
+                // Include images from the summary response
+                freshRecord.images = summaryResult.images || [];
+              }
+            } catch (summaryError) {
+              console.warn('🔍 Failed to fetch summary, continuing without it:', summaryError);
+            }
+            
             const mapped = mapSummaryToRecordDetail(freshRecord, freshRecord.structuredSummary);
             console.log('🔍 RecordDetailView - Mapped record detail from fresh data:', JSON.stringify(mapped, null, 2));
             
@@ -894,7 +923,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         try {
           console.log(`[${new Date().toISOString()}] 🗑️ DELETE_IMAGE_START - ${imageId}`);
           
-          const result = await recordingService.deleteRecordingImage(
+          const result = await imageService.deleteImage(
             imageId,
             token
           );

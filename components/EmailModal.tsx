@@ -432,26 +432,22 @@ const EmailModal: React.FC<EmailModalProps> = ({
 
   // Fetch recordings function
   const fetchRecordings = useCallback(async () => {
-    if (!token || !selectedSite?.siteId) {
+    if (!token || !selectedSite?.id) {
       console.log('📧 Cannot fetch recordings: missing token or site');
       return;
     }
 
     try {
       setIsLoadingRecords(true);
-      console.log('📧 Fetching recordings for site:', selectedSite.siteId);
+      console.log('📧 Fetching recordings for site:', selectedSite.id);
       
-      const response = await recordingService.getAllRecordings(token);
+      const response = await recordingService.getAllRecordings(token, selectedSite.id);
       console.log('📧 Recordings API response:', response);
       
       if (response.success && response.dayRecordings) {
-        // Filter recordings by selected site
-        const filteredRecordings = response.dayRecordings.filter((recording: any) => 
-          recording.jobNumber === selectedSite.siteId
-        );
-        
-        console.log('📧 Filtered recordings for site:', selectedSite.siteId, 'Count:', filteredRecordings.length);
-        setRecords(filteredRecordings);
+        // No need to filter since backend already filters by job_id
+        console.log('📧 Recordings for site:', selectedSite.id, 'Count:', response.dayRecordings.length);
+        setRecords(response.dayRecordings);
       } else {
         console.log('📧 No recordings found or API error');
         setRecords([]);
@@ -463,7 +459,7 @@ const EmailModal: React.FC<EmailModalProps> = ({
     } finally {
       setIsLoadingRecords(false);
     }
-  }, [token, selectedSite?.siteId]);
+  }, [token, selectedSite?.id]);
 
   // Animation effects
   useEffect(() => {

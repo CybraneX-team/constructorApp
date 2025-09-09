@@ -5,36 +5,38 @@ export interface ImageUploadResponse {
   message: string;
   image?: {
     id: string;
-    fileName: string;
-    jobNumber: string;
-    uploadedAt: string;
+    url: string;
+    s3_key: string;
+    mime_type: string;
+    file_size: number;
+    uploaded_at: string;
+    original_name: string;
   };
   error?: string;
 }
 
 export interface ImageData {
   id: string;
-  fileName: string;
-  originalName: string;
-  presignedUrl: string;
-  uploadedAt: string;
-  fileSize: number;
-  mimeType: string;
-  customMetadata: any;
+  url: string;
+  s3_key: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_at: string;
+  original_name: string;
 }
 
 export const imageService = {
   // Find the current day recording for a job number (today's recording)
-  async getCurrentDayRecordingId(jobNumber: string, token?: string): Promise<string | null> {
+  async getCurrentDayRecordingId(job_id: string, token?: string): Promise<string | null> {
     try {
       if (!token) {
         console.warn('📸 No token provided for getCurrentDayRecordingId');
         return null;
       }
 
-      console.log('📸 Fetching current day recording for job:', jobNumber);
+      console.log('📸 Fetching current day recording for job_id:', job_id);
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/recordings`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/recording/day-logs?job_id=${encodeURIComponent(job_id)}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -45,25 +47,24 @@ export const imageService = {
       const result = await response.json();
       
       if (!response.ok) {
-        console.error('📸 Failed to fetch recordings:', result.error);
+        console.error('📸 Failed to fetch day logs:', result.error);
         return null;
       }
 
-      // Find today's recording for this job number
+      // Find today's recording for this job_id
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
       
-      const dayRecordings = result.dayRecordings || [];
-      const todaysRecording = dayRecordings.find((rec: any) => {
-        const recordingDate = rec.date ? new Date(rec.date).toISOString().split('T')[0] : null;
-        return rec.jobNumber === jobNumber && recordingDate === todayStr;
+      const dayLogs = result.day_logs || [];
+      const todaysRecording = dayLogs.find((log: any) => {
+        return log.local_date === todayStr;
       });
 
       if (todaysRecording?.id) {
         console.log('📸 Found current day recording ID:', todaysRecording.id);
         return todaysRecording.id;
       } else {
-        console.log('📸 No current day recording found for job:', jobNumber);
+        console.log('📸 No current day recording found for job_id:', job_id);
         return null;
       }
     } catch (error) {
@@ -75,10 +76,10 @@ export const imageService = {
   // Upload a single image to AWS S3 via backend
   async uploadImage(
     imageUri: string,
-    jobNumber: string,
+    job_id: string,
     metadata?: any,
     token?: string,
-    recordingId?: string
+    day_id?: string
   ): Promise<ImageUploadResponse> {
     try {
       if (!token) {
@@ -101,12 +102,12 @@ export const imageService = {
         name: `image_${Date.now()}.${fileExtension}`
       } as any);
       
-      // Add job number
-      formData.append('jobNumber', jobNumber);
+      // Add job_id (site ObjectId)
+      formData.append('job_id', job_id);
       
-      // Add recording ID if provided
-      if (recordingId) {
-        formData.append('recordingId', recordingId);
+      // Add day_id if provided
+      if (day_id) {
+        formData.append('day_id', day_id);
       }
       
       // Add metadata if provided
@@ -114,8 +115,8 @@ export const imageService = {
         formData.append('metadata', JSON.stringify(metadata));
       }
 
-      console.log('📸 Uploading image for job:', jobNumber);
-      console.log('📸 Recording ID:', recordingId);
+      console.log('📸 Uploading image for job_id:', job_id);
+      console.log('📸 Day ID:', day_id);
       console.log('📸 Image URI:', imageUri);
       console.log('📸 Metadata:', metadata);
       console.log('📸 API Base URL:', API_CONFIG.BASE_URL);
@@ -139,8 +140,23 @@ export const imageService = {
         throw new Error(result.error || `Upload failed with status ${response.status}`);
       }
 
-      console.log('📸 Image upload successful:', result);
-      return result;
+      // Transform the backend response to match our expected format
+      const transformedResult: ImageUploadResponse = {
+        success: true,
+        message: 'Image uploaded successfully',
+        image: {
+          id: result.id,
+          url: '', // Will be provided when fetching from summary
+          s3_key: '', // Will be provided when fetching from summary
+          mime_type: '', // Will be provided when fetching from summary
+          file_size: 0, // Will be provided when fetching from summary
+          uploaded_at: new Date(result.uploaded_at).toISOString(),
+          original_name: result.file_name
+        }
+      };
+
+      console.log('📸 Image upload successful:', transformedResult);
+      return transformedResult;
     } catch (error) {
       console.error('📸 Image upload failed:', error);
       return {
@@ -151,16 +167,17 @@ export const imageService = {
     }
   },
 
-  // Get images for a specific job number
-  async getImagesForJob(jobNumber: string, token?: string): Promise<ImageData[]> {
+  // Get images for a specific job_id (images are now included in summary endpoint)
+  async getImagesForJob(job_id: string, token?: string): Promise<ImageData[]> {
     try {
       if (!token) {
         throw new Error('Authentication token required');
       }
 
-      console.log('📸 Fetching images for job:', jobNumber);
+      console.log('📸 Fetching images for job_id:', job_id);
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/recordings`, {
+      // Get day logs for this job_id
+      const dayLogsResponse = await fetch(`${API_CONFIG.BASE_URL}/recording/day-logs?job_id=${encodeURIComponent(job_id)}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -168,34 +185,54 @@ export const imageService = {
         },
       });
 
-      const result = await response.json();
+      const dayLogsResult = await dayLogsResponse.json();
       
-      if (!response.ok) {
-        throw new Error(result.error || `Failed to fetch images with status ${response.status}`);
+      if (!dayLogsResponse.ok) {
+        throw new Error(dayLogsResult.error || `Failed to fetch day logs with status ${dayLogsResponse.status}`);
       }
 
-      // Find the day recording for this job number and extract images
-      const dayRecording = result.dayRecordings?.find((rec: any) => rec.jobNumber === jobNumber);
-      const images = dayRecording?.images || [];
+      // Get images from all day logs for this job
+      const allImages: ImageData[] = [];
+      const dayLogs = dayLogsResult.day_logs || [];
+      
+      for (const dayLog of dayLogs) {
+        try {
+          const summaryResponse = await fetch(`${API_CONFIG.BASE_URL}/recording/day/${dayLog.id}/summary`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
 
-      console.log('📸 Found images for job:', jobNumber, images.length);
-      return images;
+          if (summaryResponse.ok) {
+            const summaryResult = await summaryResponse.json();
+            const images = summaryResult.images || [];
+            allImages.push(...images);
+          }
+        } catch (error) {
+          console.warn('📸 Failed to fetch images for day log:', dayLog.id, error);
+        }
+      }
+
+      console.log('📸 Found images for job_id:', job_id, allImages.length);
+      return allImages;
     } catch (error) {
       console.error('📸 Failed to fetch images:', error);
       return [];
     }
   },
 
-  // Get images for a specific day recording
-  async getImagesForDayRecording(dayRecordingId: string, token?: string): Promise<ImageData[]> {
+  // Get images for a specific day recording (now using summary endpoint)
+  async getImagesForDayRecording(day_id: string, token?: string): Promise<ImageData[]> {
     try {
       if (!token) {
         throw new Error('Authentication token required');
       }
 
-      console.log('📸 Fetching images for day recording:', dayRecordingId);
+      console.log('📸 Fetching images for day recording:', day_id);
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/recordings/${dayRecordingId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/recording/day/${day_id}/summary`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -206,15 +243,48 @@ export const imageService = {
       const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.error || `Failed to fetch day recording with status ${response.status}`);
+        throw new Error(result.error || `Failed to fetch day recording summary with status ${response.status}`);
       }
 
-      const images = result.recording?.images || [];
-      console.log('📸 Found images for day recording:', dayRecordingId, images.length);
+      const images = result.images || [];
+      console.log('📸 Found images for day recording:', day_id, images.length);
       return images;
     } catch (error) {
       console.error('📸 Failed to fetch images for day recording:', error);
       return [];
+    }
+  },
+
+  // Delete an image using the new Rust backend
+  async deleteImage(imageId: string, token?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!token) {
+        throw new Error('Authentication token required');
+      }
+
+      console.log('📸 Deleting image:', imageId);
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/images/${imageId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || `Failed to delete image with status ${response.status}`);
+      }
+
+      console.log('📸 Image deleted successfully:', imageId);
+      return { success: true };
+    } catch (error) {
+      console.error('📸 Failed to delete image:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to delete image' 
+      };
     }
   }
 };

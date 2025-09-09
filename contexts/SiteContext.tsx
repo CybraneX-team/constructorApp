@@ -4,11 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export interface Site {
   id: string;
   name: string;
-  siteId: string;
-  companyName: string;
+  site_id: string; // Rust backend uses snake_case
+  company_name: string; // Rust backend uses snake_case
   stakeholders: string[];
-  isActive: boolean;
-  createdAt: string;
+  is_active: boolean; // Rust backend uses snake_case
+  created_by?: string; // Added from Rust backend
+  created_at?: string; // Added from Rust backend
 }
 
 interface SiteContextType {

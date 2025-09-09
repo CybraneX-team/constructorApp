@@ -86,16 +86,16 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
       setIsLoading(true);
       const response = await siteService.getSiteById(siteId);
       
-      if (response.success) {
-        const siteData = response.site;
+      if (response.id) {
+        const siteData = response;
         setSite(siteData);
         
         // Populate form fields
         setName(siteData.name);
-        setSiteIdForm(siteData.siteId);
-        setCompanyName(siteData.companyName);
+        setSiteIdForm(siteData.site_id);
+        setCompanyName(siteData.company_name);
         setStakeholdersText(siteData.stakeholders.join(', '));
-        setIsActive(siteData.isActive);
+        setIsActive(siteData.is_active);
       } else {
         customAlert.error('Error', 'Failed to load site details');
         onClose();
@@ -136,26 +136,26 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
       setIsSaving(true);
       const response = await siteService.updateSite(siteId, {
         name,
-        siteId: siteIdForm,
-        companyName,
+        site_id: siteIdForm,
+        company_name: companyName,
         stakeholders: valid,
-        isActive,
+        is_active: isActive,
       });
 
-      if (response.success) {
+      if (response.id) {
         // Update local sites array
         const updatedSites = sites.map(s => 
           s.id === siteId 
-            ? { ...s, name, siteId: siteIdForm, companyName, stakeholders: valid, isActive }
+            ? { ...s, name, site_id: siteIdForm, company_name: companyName, stakeholders: valid, is_active: isActive }
             : s
         );
         setSites(updatedSites);
         
-        setSite({ ...site!, name, siteId: siteIdForm, companyName, stakeholders: valid, isActive });
+        setSite({ ...site!, name, site_id: siteIdForm, company_name: companyName, stakeholders: valid, is_active: isActive });
         setIsEditing(false);
         customAlert.success('Success', 'Site updated successfully!');
       } else {
-        customAlert.error('Error', response.error || 'Failed to update site');
+        customAlert.error('Error', 'Failed to update site');
       }
     } catch (error: any) {
       console.error('Error updating site:', error);
@@ -190,15 +190,12 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
       setIsDeleting(true);
       const response = await siteService.deleteSite(siteId);
 
-      if (response.success) {
-        // Remove from local sites array
-        const updatedSites = sites.filter(s => s.id !== siteId);
-        setSites(updatedSites);
-        
-        customAlert.success('Success', 'Site deleted successfully!', onClose);
-      } else {
-        customAlert.error('Error', response.error || 'Failed to delete site');
-      }
+      // Rust backend returns empty response on successful delete
+      // Remove from local sites array
+      const updatedSites = sites.filter(s => s.id !== siteId);
+      setSites(updatedSites);
+      
+      customAlert.success('Success', 'Site deleted successfully!', onClose);
     } catch (error: any) {
       console.error('Error deleting site:', error);
       if (error.response?.status === 401) {
@@ -327,7 +324,7 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                         placeholderTextColor={Colors.light.text}
                       />
                     ) : (
-                      <Text style={styles.fieldValue}>{site.siteId}</Text>
+                      <Text style={styles.fieldValue}>{site.site_id}</Text>
                     )}
                   </View>
 
@@ -342,7 +339,7 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                         placeholderTextColor={Colors.light.text}
                       />
                     ) : (
-                      <Text style={styles.fieldValue}>{site.companyName}</Text>
+                      <Text style={styles.fieldValue}>{site.company_name}</Text>
                     )}
                   </View>
 
@@ -358,9 +355,9 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                         </Text>
                       </TouchableOpacity>
                     ) : (
-                      <View style={[styles.statusBadge, site.isActive && styles.statusBadgeActive]}>
-                        <Text style={[styles.statusBadgeText, site.isActive && styles.statusBadgeTextActive]}>
-                          {site.isActive ? 'Active' : 'Inactive'}
+                      <View style={[styles.statusBadge, site.is_active && styles.statusBadgeActive]}>
+                        <Text style={[styles.statusBadgeText, site.is_active && styles.statusBadgeTextActive]}>
+                          {site.is_active ? 'Active' : 'Inactive'}
                         </Text>
                       </View>
                     )}
@@ -413,7 +410,7 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                   <View style={styles.field}>
                     <Text style={styles.fieldLabel}>Created</Text>
                     <Text style={styles.fieldValue}>
-                      {new Date(site.createdAt).toLocaleDateString()}
+                      {site.created_at ? new Date(site.created_at).toLocaleDateString() : 'N/A'}
                     </Text>
                   </View>
 
@@ -568,7 +565,7 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                       placeholderTextColor={Colors.light.text}
                     />
                   ) : (
-                    <Text style={styles.fieldValue}>{site.siteId}</Text>
+                    <Text style={styles.fieldValue}>{site.site_id}</Text>
                   )}
                 </View>
 
@@ -583,7 +580,7 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                       placeholderTextColor={Colors.light.text}
                     />
                   ) : (
-                    <Text style={styles.fieldValue}>{site.companyName}</Text>
+                    <Text style={styles.fieldValue}>{site.company_name}</Text>
                   )}
                 </View>
 
@@ -599,9 +596,9 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                       </Text>
                     </TouchableOpacity>
                   ) : (
-                    <View style={[styles.statusBadge, site.isActive && styles.statusBadgeActive]}>
-                      <Text style={[styles.statusBadgeText, site.isActive && styles.statusBadgeTextActive]}>
-                        {site.isActive ? 'Active' : 'Inactive'}
+                    <View style={[styles.statusBadge, site.is_active && styles.statusBadgeActive]}>
+                      <Text style={[styles.statusBadgeText, site.is_active && styles.statusBadgeTextActive]}>
+                        {site.is_active ? 'Active' : 'Inactive'}
                       </Text>
                     </View>
                   )}
@@ -654,7 +651,7 @@ const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Created</Text>
                   <Text style={styles.fieldValue}>
-                    {new Date(site.createdAt).toLocaleDateString()}
+                    {site.created_at ? new Date(site.created_at).toLocaleDateString() : 'N/A'}
                   </Text>
                 </View>
 

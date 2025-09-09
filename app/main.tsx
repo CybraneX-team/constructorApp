@@ -58,7 +58,7 @@ const VoiceMemosScreen = () => {
   
   // Log when selected site changes
   useEffect(() => {
-    console.log(`[${new Date().toISOString()}] 🏢 SITE_SELECTED - ${selectedSite?.name} (${selectedSite?.siteId})`);
+    console.log(`[${new Date().toISOString()}] 🏢 SITE_SELECTED - ${selectedSite?.name} (${selectedSite?.site_id})`);
   }, [selectedSite]);
 
   const {
@@ -300,7 +300,7 @@ const VoiceMemosScreen = () => {
 
   const handleDescriptionSubmit = async (desc: string) => {
     try {
-      if (!selectedSite?.siteId) {
+      if (!selectedSite?.site_id) {
         customAlert.error('No Site Selected', 'Please select a site first to upload images.');
         setSelectedImages([]);
         setShowDescriptionPrompt(false);
@@ -314,7 +314,7 @@ const VoiceMemosScreen = () => {
         return;
       }
 
-      console.log('📸 Uploading images for job:', selectedSite.siteId);
+      console.log('📸 Uploading images for job:', selectedSite.site_id);
       console.log('📸 Images selected:', selectedImages.length);
       console.log('📸 Description:', desc);
 
@@ -325,7 +325,7 @@ const VoiceMemosScreen = () => {
       setRefreshSuccess(false);
 
       // First, get the current day recording ID for this job
-      const currentRecordingId = await imageService.getCurrentDayRecordingId(selectedSite.siteId, token || undefined);
+      const currentRecordingId = await imageService.getCurrentDayRecordingId(selectedSite.id, token || undefined);
       console.log('📸 Current day recording ID:', currentRecordingId);
 
       // Upload each image
@@ -341,7 +341,7 @@ const VoiceMemosScreen = () => {
 
         const result = await imageService.uploadImage(
           imageUri,
-          selectedSite.siteId,
+          selectedSite.id, // Use site ObjectId as job_id
           metadata,
           token || undefined,
           currentRecordingId || undefined
@@ -676,7 +676,7 @@ const VoiceMemosScreen = () => {
             onClose={handleCloseWorkProgressModal}
             onRefresh={refreshProgress}
             loading={circularProgressLoading}
-            jobNumber={selectedSite?.siteId || 'CFX 417-151'}
+            jobNumber={selectedSite?.site_id || 'CFX 417-151'}
             modalScale={workProgressModalScale}
             modalOpacity={workProgressModalOpacity}
             backdropOpacity={workProgressBackdropOpacity}

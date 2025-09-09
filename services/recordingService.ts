@@ -3,21 +3,11 @@ import { config } from '../config/app.config';
 import { apiMonitor } from './apiMonitor';
 
 export interface RecordingUploadData {
-  id: string;
   title: string;
   duration: string;
-  date: string;
-  jobNumber: string;
-  type: string;
-  audioFile: string; // base64 encoded audio or file URI
-  transcription?: string;
-  metadata: {
-    sampleRate?: number;
-    channels?: number;
-    bitRate?: number;
-    fileSize?: number;
-    mimeType?: string;
-  };
+  local_date: string; // YYYY-MM-DD format
+  job_id: string; // site ObjectId
+  tz?: string; // IANA timezone string
 }
 
 export interface UploadResponse {
@@ -38,7 +28,7 @@ class RecordingService {
   }
 
   /**
-   * Uploads a recording to the backend
+   * Uploads a recording to the backend using new multipart format
    * @param recording - The AudioRecorder object from expo-audio
    * @param metadata - Additional metadata about the recording
    * @returns Promise<UploadResponse>
@@ -47,9 +37,9 @@ class RecordingService {
     recording: AudioRecorder,
     metadata: {
       title: string;
-      jobNumber: string;
-      type: string;
-      transcription?: string;
+      job_id: string; // site ObjectId
+      duration?: string;
+      tz?: string;
     },
     token?: string
   ): Promise<UploadResponse> {
@@ -65,31 +55,18 @@ class RecordingService {
 
       // Get audio file info
       const audioInfo = await this.getAudioFileInfo(uri);
-      
-      // Convert audio file to base64 or prepare for FormData
-      const audioData = await this.prepareAudioData(uri);
 
-      // Prepare upload data
+      // Prepare upload data for new multipart format
       const uploadData: RecordingUploadData = {
-        id: this.generateId(),
         title: metadata.title,
-        duration: this.formatDuration(duration || 0),
-        date: new Date().toISOString(),
-        jobNumber: metadata.jobNumber,
-        type: metadata.type,
-        audioFile: audioData,
-        transcription: metadata.transcription,
-        metadata: {
-          sampleRate: audioInfo.sampleRate,
-          channels: audioInfo.channels,
-          bitRate: audioInfo.bitRate,
-          fileSize: audioInfo.fileSize,
-          mimeType: audioInfo.mimeType,
-        },
+        duration: metadata.duration || this.formatDuration(duration || 0),
+        local_date: this.formatLocalDate(new Date()),
+        job_id: metadata.job_id,
+        tz: metadata.tz || Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
-      // Upload to backend
-      const response = await this.performUpload(uploadData, token);
+      // Upload to backend using new multipart format
+      const response = await this.performMultipartUpload(uri, uploadData, audioInfo, token);
       return response;
 
     } catch (error) {
@@ -164,45 +141,56 @@ class RecordingService {
   }
 
   /**
-   * Performs the actual HTTP upload to the backend
+   * Performs multipart upload to the new Rust backend
    */
-  private async performUpload(data: RecordingUploadData, token?: string): Promise<UploadResponse> {
+  private async performMultipartUpload(
+    fileUri: string, 
+    data: RecordingUploadData, 
+    audioInfo: any, 
+    token?: string
+  ): Promise<UploadResponse> {
     const formData = new FormData();
     
-    // Append all the data fields
-    formData.append('id', data.id);
-    formData.append('title', data.title);
-    formData.append('duration', data.duration);
-    formData.append('date', data.date);
-    formData.append('jobNumber', data.jobNumber);
-    formData.append('type', data.type);
-    formData.append('metadata', JSON.stringify(data.metadata));
+    // Append the audio file
+    formData.append('file', {
+      uri: fileUri,
+      type: audioInfo.mimeType || 'audio/m4a',
+      name: `recording_${Date.now()}.m4a`,
+    } as any);
     
-    if (data.transcription) {
-      formData.append('transcription', data.transcription);
+    // Append required fields
+    formData.append('job_id', data.job_id);
+    formData.append('local_date', data.local_date);
+    
+    // Append optional fields
+    if (data.title) {
+      formData.append('title', data.title);
+    }
+    if (data.duration) {
+      formData.append('duration', data.duration);
+    }
+    if (data.tz) {
+      formData.append('tz', data.tz);
     }
 
-    // For the audio file, we can either send as base64 in JSON or as a file in FormData
-    // Option 1: As base64 in the request body (JSON)
-    // Option 2: As a file in FormData (more efficient for large files)
-    
-    // We'll use FormData approach for better handling of large audio files
-    formData.append('audioFile', {
-      uri: data.audioFile, // This would be the file URI, not base64
-      type: data.metadata.mimeType || 'audio/m4a',
-      name: `recording_${data.id}.m4a`,
-    } as any);
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'multipart/form-data',
-    };
+    const headers: Record<string, string> = {};
     
     // Add authorization header if token is provided
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}/recordings/save`, {
+    console.log('🚀 Uploading to new Rust backend:', `${this.baseUrl}/recording/upload`);
+    console.log('📤 Upload data:', {
+      job_id: data.job_id,
+      local_date: data.local_date,
+      title: data.title,
+      duration: data.duration,
+      tz: data.tz,
+      fileType: audioInfo.mimeType
+    });
+
+    const response = await fetch(`${this.baseUrl}/recording/upload`, {
       method: 'POST',
       headers,
       body: formData,
@@ -210,25 +198,38 @@ class RecordingService {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ Upload failed:', response.status, errorText);
       throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
 
     const result = await response.json();
+    console.log('✅ Upload successful:', result);
+    
     return {
       success: true,
-      recordingId: result.id || data.id,
+      recordingId: result.id || result.recording_id,
       message: result.message || 'Recording uploaded successfully',
     };
   }
 
   /**
-   * Alternative upload method using JSON payload with base64 audio
+   * Formats date to YYYY-MM-DD format for local_date field
+   */
+  private formatLocalDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Upload method using new multipart format (replaces JSON upload)
    */
   async uploadRecordingAsJSON(
     recording: AudioRecorder,
     metadata: {
       title: string;
-      jobNumber: string;
+      jobNumber: string; // This will be converted to job_id
       type: string;
       transcription?: string;
       durationOverrideMs?: number;
@@ -236,7 +237,7 @@ class RecordingService {
     token?: string
   ): Promise<UploadResponse> {
     try {
-      console.log('🚀 Starting upload to:', this.baseUrl);
+      console.log('🚀 Starting upload to new Rust backend:', this.baseUrl);
       
       const status = recording.getStatus();
       const uri = recording.uri;
@@ -250,66 +251,34 @@ class RecordingService {
       console.log('⏱️ Recording duration:', duration);
 
       const audioInfo = await this.getAudioFileInfo(uri);
-      const base64Audio = await this.prepareAudioData(uri);
+
+      // Convert jobNumber to job_id (site ObjectId)
+      // For now, we'll use the jobNumber as job_id, but this should be the actual site ObjectId
+      const job_id = metadata.jobNumber; // TODO: Convert to actual site ObjectId
 
       const uploadData: RecordingUploadData = {
-        id: this.generateId(),
         title: metadata.title,
         duration: this.formatDuration(duration || 0),
-        date: new Date().toISOString(),
-        jobNumber: metadata.jobNumber,
-        type: metadata.type,
-        audioFile: base64Audio,
-        transcription: metadata.transcription,
-        metadata: audioInfo,
+        local_date: this.formatLocalDate(new Date()),
+        job_id: job_id,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
       console.log('📤 Upload data prepared:', {
-        id: uploadData.id,
         title: uploadData.title,
         duration: uploadData.duration,
-        audioFileSize: base64Audio.length,
-        url: `${this.baseUrl}/recordings/save`
+        local_date: uploadData.local_date,
+        job_id: uploadData.job_id,
+        tz: uploadData.tz,
+        url: `${this.baseUrl}/recording/upload`
       });
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-        console.log('🔑 Including authorization token in request');
-      } else {
-        console.warn('⚠️ No authentication token provided for upload');
-      }
-
-      const response = await fetch(`${this.baseUrl}/recordings/save`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(uploadData),
-      });
-
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Response headers:', response.headers);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Upload failed response:', errorText);
-        throw new Error(`Upload failed: ${response.status} ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Upload successful:', result);
-      
-      return {
-        success: true,
-        recordingId: result.id || uploadData.id,
-        message: result.message || 'Recording uploaded successfully',
-      };
+      // Use the new multipart upload method
+      const response = await this.performMultipartUpload(uri, uploadData, audioInfo, token);
+      return response;
 
     } catch (error) {
-      console.error('❌ JSON Upload failed:', error);
+      console.error('❌ Multipart Upload failed:', error);
       
       if (error instanceof TypeError && error.message === 'Network request failed') {
         console.error('🔍 Network debugging info:');
@@ -394,7 +363,7 @@ class RecordingService {
       console.log('🔑 Using token:', token ? 'Token provided' : 'No token');
       console.log('🌐 Backend URL:', this.baseUrl);
       
-      const searchUrl = `${this.baseUrl}/search`;
+      const searchUrl = `${this.baseUrl}/recording/search`;
       console.log('📡 Search URL:', searchUrl);
       
       const headers = {
@@ -453,23 +422,26 @@ class RecordingService {
   }
 
   /**
-   * Get all recordings for the authenticated user
+   * Get all recordings for the authenticated user using new Rust backend
    * @param token - JWT authentication token
+   * @param job_id - Site ObjectId to filter recordings
    * @returns Promise with all recordings
    */
-  async getAllRecordings(token: string): Promise<{
+  async getAllRecordings(token: string, job_id?: string): Promise<{
     success: boolean;
     recordings: any[];
     dayRecordings: any[];
     count: number;
     error?: string;
   }> {
-    const apiUrl = `${this.baseUrl}/recordings`;
+    // Build URL with job_id query parameter if provided
+    const baseUrl = `${this.baseUrl}/recording/day-logs`;
+    const apiUrl = job_id ? `${baseUrl}?job_id=${encodeURIComponent(job_id)}` : baseUrl;
     
     try {
       // Start API monitoring
       apiMonitor.startCall(apiUrl, 'GET');
-      console.log('📂 Fetching all recordings');
+      console.log('📂 Fetching all recordings from new Rust backend for job_id:', job_id);
       
       // Create abort controller for timeout
       const controller = new AbortController();
@@ -493,17 +465,18 @@ class RecordingService {
       }
 
       const result = await response.json();
-      console.log('✅ Recordings fetched successfully:', result.count, 'recordings');
+      console.log('✅ Recordings fetched successfully:', result.day_logs?.length || 0, 'day logs');
       console.log('📂 API response structure:', Object.keys(result));
       
       // End API monitoring - success
       apiMonitor.endCall(apiUrl, 'GET', true);
       
+      // Convert Rust backend response to expected format
       return {
-        success: result.success,
-        recordings: result.recordings || [],
-        dayRecordings: result.dayRecordings || [],
-        count: result.count || 0,
+        success: true,
+        recordings: [], // Not used in new format
+        dayRecordings: result.day_logs || [], // Rust backend returns day_logs array
+        count: result.day_logs?.length || 0,
       };
 
     } catch (error) {
@@ -535,81 +508,48 @@ class RecordingService {
   }
 
   /**
-   * Upload recording using URI (for expo-audio)
+   * Upload recording using URI with new multipart format
    */
   async uploadRecordingWithUri(
     recordingUri: string,
     metadata: {
       title: string;
-      jobNumber: string;
+      jobNumber: string; // This will be converted to job_id
       type: string;
       transcription?: string;
     },
     token?: string
   ): Promise<UploadResponse> {
     try {
-      console.log('🚀 Starting upload to:', this.baseUrl);
+      console.log('🚀 Starting upload to new Rust backend:', this.baseUrl);
       console.log('📁 Recording URI:', recordingUri);
 
       const audioInfo = await this.getAudioFileInfo(recordingUri);
-      const base64Audio = await this.prepareAudioData(recordingUri);
+
+      // Convert jobNumber to job_id (site ObjectId)
+      // For now, we'll use the jobNumber as job_id, but this should be the actual site ObjectId
+      const job_id = metadata.jobNumber; // TODO: Convert to actual site ObjectId
 
       const uploadData: RecordingUploadData = {
-        id: this.generateId(),
         title: metadata.title,
         duration: '00:00', // We'll update this with actual duration if available
-        date: new Date().toISOString(),
-        jobNumber: metadata.jobNumber,
-        type: metadata.type,
-        audioFile: base64Audio,
-        transcription: metadata.transcription,
-        metadata: audioInfo,
+        local_date: this.formatLocalDate(new Date()),
+        job_id: job_id,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
       console.log('📤 Upload data prepared:', {
-        id: uploadData.id,
         title: uploadData.title,
         duration: uploadData.duration,
-        audioFileSize: base64Audio.length,
-        url: `${this.baseUrl}/recordings/save`
+        local_date: uploadData.local_date,
+        job_id: uploadData.job_id,
+        tz: uploadData.tz,
+        url: `${this.baseUrl}/recording/upload`
       });
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      
-      // Add authorization header if token is provided
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-        console.log('🔑 Including authorization token in request');
-      } else {
-        console.warn('⚠️ No authentication token provided for upload');
-      }
-
-      const response = await fetch(`${this.baseUrl}/recordings/save`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(uploadData),
-      });
-
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Response headers:', response.headers);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Upload failed response:', errorText);
-        throw new Error(`Upload failed: ${response.status} ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Upload successful:', result);
-      
-      return {
-        success: true,
-        recordingId: result.id || uploadData.id,
-        message: result.message || 'Recording uploaded successfully',
-      };
+      // Use the new multipart upload method
+      const response = await this.performMultipartUpload(recordingUri, uploadData, audioInfo, token);
+      return response;
 
     } catch (error) {
       console.error('❌ URI Upload failed:', error);
@@ -631,14 +571,21 @@ class RecordingService {
     }
   }
 
-  async getRecordingSummary(id: string, token: string): Promise<{
+  /**
+   * Get day log details with streaming URLs using new Rust backend
+   * @param dayLogId - The day log ID
+   * @param token - JWT authentication token
+   * @returns Promise with day log details including recordings with streaming URLs
+   */
+  async getDayLogDetails(dayLogId: string, token: string): Promise<{
     success: boolean;
-    summary: any;
+    dayLog: any;
     error?: string;
   }> {
     try {
-      // The backend endpoint is GET, not POST, and doesn't require email in body
-      const url = `${this.baseUrl}/recordings/${encodeURIComponent(id)}/summary`;
+      const url = `${this.baseUrl}/recording/day/${encodeURIComponent(dayLogId)}`;
+      
+      console.log('📋 Fetching day log details for ID:', dayLogId);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -650,19 +597,63 @@ class RecordingService {
 
       if (!response.ok) {
         const text = await response.text();
+        console.error('❌ Failed to fetch day log details:', response.status, text);
+        throw new Error(`Day log fetch failed: ${response.status} ${text}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Day log details fetched successfully:', data);
+      
+      return { success: true, dayLog: data };
+    } catch (error: any) {
+      console.error('Failed to fetch day log details:', error);
+      return { success: false, dayLog: null, error: error?.message || 'Unknown error' };
+    }
+  }
+
+  async getRecordingSummary(id: string, token: string): Promise<{
+    success: boolean;
+    summary: any;
+    images?: any[];
+    error?: string;
+  }> {
+    try {
+      // Use new Rust backend endpoint
+      const url = `${this.baseUrl}/recording/day/${encodeURIComponent(id)}/summary`;
+      
+      console.log('📋 Fetching summary for day log ID:', id);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('❌ Failed to fetch summary:', response.status, text);
         throw new Error(`Summary fetch failed: ${response.status} ${text}`);
       }
 
       const data = await response.json();
-      return { success: true, summary: data };
+      console.log('✅ Summary fetched successfully:', data);
+      
+      // Return the summary and images separately for compatibility
+      return { 
+        success: true, 
+        summary: data.summary,
+        images: data.images || []
+      };
     } catch (error: any) {
       console.error('Failed to fetch recording summary:', error);
-      return { success: false, summary: null, error: error?.message || 'Unknown error' };
+      return { success: false, summary: null, images: [], error: error?.message || 'Unknown error' };
     }
   }
 
   /**
-   * Delete a day recording
+   * Delete a day recording using new Rust backend
    * @param dayRecordingId - The day recording ID (format: YYYY-MM-DD_jobNumber)
    * @param token - JWT authentication token
    * @returns Promise with delete result
@@ -672,7 +663,7 @@ class RecordingService {
     message?: string;
     error?: string;
   }> {
-    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(dayRecordingId)}`;
+    const apiUrl = `${this.baseUrl}/recording/day/${encodeURIComponent(dayRecordingId)}`;
     
     try {
       apiMonitor.startCall(apiUrl, 'DELETE');
@@ -693,14 +684,14 @@ class RecordingService {
         throw new Error(`Delete failed: ${response.status} ${errorText}`);
       }
 
-      const result = await response.json();
+      // Rust backend returns empty response on successful delete
       console.log(`[${new Date().toISOString()}] ✅ DELETE_SUCCESS - ${dayRecordingId}`);
       
       apiMonitor.endCall(apiUrl, 'DELETE', true);
       
       return {
         success: true,
-        message: result.message || 'Recording deleted successfully',
+        message: 'Recording deleted successfully',
       };
 
     } catch (error) {
@@ -730,7 +721,7 @@ class RecordingService {
     message?: string;
     error?: string;
   }> {
-    const apiUrl = `${this.baseUrl}/recordings/${encodeURIComponent(recordingId)}/summary`;
+    const apiUrl = `${this.baseUrl}/recording/day/${encodeURIComponent(recordingId)}/summary`;
     
     try {
       apiMonitor.startCall(apiUrl, 'PUT');
@@ -764,7 +755,7 @@ class RecordingService {
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          structuredSummary: updatedSummary,
+          summary: updatedSummary,
         }),
       });
 

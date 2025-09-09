@@ -104,14 +104,14 @@ export const useVoiceMemos = (options?: {
   // Fetch recordings from backend - simple and clean
   const fetchRecordings = useCallback(async () => {
     const startTime = Date.now();
-    console.log(`[${new Date().toISOString()}] 📂 FETCH_START - Getting recordings for site: ${selectedSite?.siteId}`);
+    console.log(`[${new Date().toISOString()}] 📂 FETCH_START - Getting recordings for site: ${selectedSite?.site_id}`);
     
     if (!token) {
       console.log(`[${new Date().toISOString()}] ⚠️ FETCH_SKIP - No auth token available`);
       return;
     }
     
-    if (!selectedSite?.siteId) {
+    if (!selectedSite?.id) {
       console.log(`[${new Date().toISOString()}] ⚠️ FETCH_SKIP - No site selected`);
       setRecordsList([]);
       return;
@@ -120,21 +120,17 @@ export const useVoiceMemos = (options?: {
     setIsLoadingRecords(true);
     
     try {
-      const res = await recordingService.getAllRecordings(token);
+      const res = await recordingService.getAllRecordings(token, selectedSite?.id);
       const duration = Date.now() - startTime;
       
       if (res.success) {
         const dayRecordings = res.dayRecordings || [];
         
-        // Filter recordings by selected site's job number
-        const filteredRecordings = dayRecordings.filter(
-          (recording: any) => recording.jobNumber === selectedSite.siteId
-        );
-        
+        // No need to filter since backend already filters by job_id
         // Map to UI format
-        const mapped = filteredRecordings.map(mapBackendRecordingToListItem);
+        const mapped = dayRecordings.map(mapBackendRecordingToListItem);
         
-        console.log(`[${new Date().toISOString()}] ✅ FETCH_SUCCESS - ${duration}ms - Total: ${dayRecordings.length}, Filtered: ${mapped.length}`);
+        console.log(`[${new Date().toISOString()}] ✅ FETCH_SUCCESS - ${duration}ms - Total: ${mapped.length} recordings`);
         
         setRecordsList(mapped);
       } else {
@@ -210,10 +206,10 @@ export const useVoiceMemos = (options?: {
 
   // Simple site change handler - clear records when site changes
   useEffect(() => {
-    console.log(`[${new Date().toISOString()}] 🏢 SITE_CHANGE - ${selectedSite?.siteId || 'none'}`);
+    console.log(`[${new Date().toISOString()}] 🏢 SITE_CHANGE - ${selectedSite?.site_id || 'none'}`);
     // Clear records when site changes - they will be loaded on demand when modal opens
     setRecordsList([]);
-  }, [selectedSite?.siteId]);
+  }, [selectedSite?.site_id]);
 
   // Get current title based on active circle and recording state
   const getCurrentTitle = () => {
@@ -538,13 +534,13 @@ export const useVoiceMemos = (options?: {
         const nextIdx = getNextDailyIndex(prefix);
         const generatedTitle = `${prefix}_${nextIdx}`;
 
-        // Proceed with upload using JSON path so we can include computed duration explicitly
-        const jobNumber = selectedSite?.siteId || 'CFX 417-151';
-        console.log('🎙️ Creating recording with job number:', jobNumber, 'from site:', selectedSite?.name);
+        // Proceed with upload using new multipart format
+        const job_id = selectedSite?.id || 'CFX 417-151'; // Use site ObjectId instead of siteId
+        console.log('🎙️ Creating recording with job_id:', job_id, 'from site:', selectedSite?.name);
         
         const uploadResult = await recordingService.uploadRecordingAsJSON(audioRecorder, {
           title: generatedTitle,
-          jobNumber: jobNumber, // Use selected site's siteId as job number
+          jobNumber: job_id, // This will be converted to job_id in the service
           type: 'Voice Memo',
           transcription: liveTranscription || undefined,
           durationOverrideMs: actualDurationMs,
@@ -619,12 +615,12 @@ export const useVoiceMemos = (options?: {
       const nextIdx = getNextDailyIndex(prefix);
       const generatedTitle = `${prefix}_${nextIdx}`;
 
-      const jobNumber = selectedSite?.siteId || 'CFX 417-151';
-      console.log('🎙️ Uploading recording with job number:', jobNumber, 'from site:', selectedSite?.name);
+      const job_id = selectedSite?.id || 'CFX 417-151'; // Use site ObjectId instead of siteId
+      console.log('🎙️ Uploading recording with job_id:', job_id, 'from site:', selectedSite?.name);
       
       const result = await recordingService.uploadRecordingAsJSON(recordingToUpload, {
         title: generatedTitle,
-        jobNumber: jobNumber, // Use selected site's siteId as job number
+        jobNumber: job_id, // This will be converted to job_id in the service
         type: 'Voice Memo',
         transcription: liveTranscription || undefined,
       }, token || undefined);

@@ -75,10 +75,10 @@ const SiteSelectionScreen: React.FC = () => {
     try {
       const response = await axiosInstance.get('/sites');
       
-      if (response.data.success) {
+      if (response.data.sites) {
         setSites(response.data.sites || []);
       } else {
-        console.error('Failed to load sites:', response.data.error);
+        console.error('Failed to load sites:', response.data);
         customAlert.error('Error', 'Failed to load sites');
       }
     } catch (error: any) {
@@ -137,26 +137,32 @@ const SiteSelectionScreen: React.FC = () => {
     try {
       const response = await siteService.createSite({
         name: siteName,
-        siteId: siteId,
-        companyName: companyName,
+        site_id: siteId,
+        company_name: companyName,
         stakeholders: valid,
-        isActive: true,
+        is_active: true,
       });
 
-      if (response.success) {
-        // Use context method to add the new site
-        addSite(response.site);
-        setShowCreateForm(false);
-        
-        // Reset form
-        setSiteName('');
-        setSiteId('');
-        setCompanyName('');
-        setStakeholdersText('');
-        
-        customAlert.success('Success', 'Site created successfully!');
+      if (response.id) {
+        // Fetch the created site to get the full object
+        const createdSite = await siteService.getSiteById(response.id);
+        if (createdSite.id) {
+          // Use context method to add the new site
+          addSite(createdSite);
+          setShowCreateForm(false);
+          
+          // Reset form
+          setSiteName('');
+          setSiteId('');
+          setCompanyName('');
+          setStakeholdersText('');
+          
+          customAlert.success('Success', 'Site created successfully!');
+        } else {
+          customAlert.error('Error', 'Site created but failed to fetch details');
+        }
       } else {
-        customAlert.error('Error', response.error || 'Failed to create site');
+        customAlert.error('Error', 'Failed to create site');
       }
     } catch (error: any) {
       console.error('Error creating site:', error);
@@ -214,8 +220,8 @@ const SiteSelectionScreen: React.FC = () => {
         </View>
         <View style={styles.siteInfo}>
           <Text style={styles.siteName}>{item.name}</Text>
-          <Text style={styles.siteId}>ID: {item.siteId}</Text>
-          <Text style={styles.companyName}>{item.companyName}</Text>
+          <Text style={styles.siteId}>ID: {item.site_id}</Text>
+          <Text style={styles.companyName}>{item.company_name}</Text>
         </View>
         <Ionicons name="chevron-forward" size={24} color={'black'} />
       </View>
