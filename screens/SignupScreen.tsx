@@ -11,7 +11,9 @@ import {
   Dimensions,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Keyboard,
+  Easing
 } from 'react-native';
 import { customAlert } from '../services/customAlertService';
 import { router } from 'expo-router';
@@ -19,6 +21,7 @@ import { Colors } from '../constants/Colors';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 
 interface SignupScreenProps {
@@ -42,15 +45,44 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(50)).current;
   const buttonScale = React.useRef(new Animated.Value(1)).current;
+  const keyboardHeightAnim = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     fadeAnim.setValue(1);
     slideAnim.setValue(0);
   }, [fadeAnim, slideAnim]);
 
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: any) => {
+      const h = e.endCoordinates?.height || 0;
+      Animated.timing(keyboardHeightAnim, {
+        toValue: h,
+        duration: Platform.OS === 'ios' ? 260 : 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const onHide = () => {
+      Animated.timing(keyboardHeightAnim, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? 220 : 200,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const s1 = Keyboard.addListener(showEvent as any, onShow);
+    const s2 = Keyboard.addListener(hideEvent as any, onHide);
+    return () => { s1.remove(); s2.remove(); };
+  }, [keyboardHeightAnim]);
+
   const handleSignup = async () => {
-    if (!email || (!isAdmin && !password) || (isAdmin && !superPassword)) {
-      customAlert.error('Error', 'Please fill in email and password');
+    if (!email || (!isAdmin && !password) || (isAdmin && (!superPassword || !accessKey))) {
+      customAlert.error('Error', isAdmin ? 'Email, superuser password and access key are required' : 'Please fill in email and password');
       return;
     }
 
@@ -62,7 +94,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      await signup(email, isAdmin ? superPassword : password, false, undefined);
+      await signup(email, isAdmin ? superPassword : password, isAdmin, isAdmin ? accessKey : undefined);
       customAlert.success('Success', 'Account created successfully! Please login.');
       router.push('/login');
     } catch (error: any) {
@@ -90,15 +122,19 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
       
       <KeyboardAvoidingView 
         style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.select({ ios: 0, android: 0 }) as number}
       >
-        <ScrollView 
+        <KeyboardAwareScrollView 
           style={styles.scrollContainer} 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          enableOnAndroid
+          extraScrollHeight={110}
+          enableAutomaticScroll
+          keyboardOpeningTime={250}
         >
         <Animated.View 
           style={[
@@ -278,7 +314,9 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </Animated.View>
-        </ScrollView>
+          {/* Animated spacer to smoothen keyboard lift */}
+          <Animated.View style={{ height: keyboardHeightAnim.interpolate({ inputRange: [0, 400], outputRange: [0, 48], extrapolate: 'clamp' }) }} />
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </View>
   );

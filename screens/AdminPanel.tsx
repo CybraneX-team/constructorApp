@@ -59,7 +59,7 @@ const AdminPanel: React.FC = () => {
   const loadSites = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/admin/sites`, {
+      const response = await fetch(`${API_BASE_URL}/sites/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -71,7 +71,7 @@ const AdminPanel: React.FC = () => {
       }
 
       const data = await response.json();
-      setSites(data.sites || []);
+      setSites(data.sites || data || []);
     } catch (error) {
       console.error('Error loading sites:', error);
       customAlert.error('Error', 'Failed to load sites. Please try again.');
@@ -93,13 +93,13 @@ const AdminPanel: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/sites`, {
+      const response = await fetch(`${API_BASE_URL}/sites/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ name: formData.name, site_id: formData.address, company_name: formData.description, is_active: true }),
       });
 
       if (!response.ok) {
@@ -107,7 +107,7 @@ const AdminPanel: React.FC = () => {
       }
 
       const newSite = await response.json();
-      setSites([...sites, newSite.site]);
+      setSites([...(sites || []), newSite]);
       setShowAddModal(false);
       setFormData({ name: '', address: '', description: '' });
       customAlert.success('Success', 'Site created successfully!');
@@ -124,13 +124,13 @@ const AdminPanel: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/sites/${editingSite.id}`, {
+      const response = await fetch(`${API_BASE_URL}/sites/${editingSite.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ name: formData.name, site_id: formData.address, company_name: formData.description }),
       });
 
       if (!response.ok) {
@@ -139,7 +139,7 @@ const AdminPanel: React.FC = () => {
 
       const updatedSite = await response.json();
       setSites(sites.map(site => 
-        site.id === editingSite.id ? updatedSite.site : site
+        site.id === editingSite.id ? updatedSite : site
       ));
       setShowEditModal(false);
       setEditingSite(null);
@@ -162,7 +162,7 @@ const AdminPanel: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_BASE_URL}/admin/sites/${site.id}`, {
+              const response = await fetch(`${API_BASE_URL}/sites/${site.id}`, {
                 method: 'DELETE',
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -222,32 +222,34 @@ const AdminPanel: React.FC = () => {
   };
 
   const renderSiteItem = ({ item }: { item: Site }) => (
-    <View style={styles.siteCard}>
-      <View style={styles.siteInfo}>
-        <Text style={styles.siteName}>{item.name}</Text>
-        <Text style={styles.siteAddress}>{item.address}</Text>
-        {item.description && (
-          <Text style={styles.siteDescription}>{item.description}</Text>
-        )}
-        <Text style={styles.siteDate}>
-          Created: {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
+    <TouchableOpacity onPress={() => router.push({ pathname: '/admin-site', params: { id: item.id } })} activeOpacity={0.8}>
+      <View style={styles.siteCard}>
+        <View style={styles.siteInfo}>
+          <Text style={styles.siteName}>{item.name}</Text>
+          <Text style={styles.siteAddress}>{item.address}</Text>
+          {item.description && (
+            <Text style={styles.siteDescription}>{item.description}</Text>
+          )}
+          <Text style={styles.siteDate}>
+            Created: {new Date(item.createdAt).toLocaleDateString()}
+          </Text>
+        </View>
+        <View style={styles.siteActions}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.editButton]}
+            onPress={() => openEditModal(item)}
+          >
+            <Ionicons name="create-outline" size={20} color="#007AFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.deleteButton]}
+            onPress={() => handleDeleteSite(item)}
+          >
+            <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.siteActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => openEditModal(item)}
-        >
-          <Ionicons name="create-outline" size={20} color="#007AFF" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDeleteSite(item)}
-        >
-          <Ionicons name="trash-outline" size={20} color="#FF3B30" />
-        </TouchableOpacity>
-      </View>
-    </View>
+    </TouchableOpacity>
   );
 
   const renderModal = () => (

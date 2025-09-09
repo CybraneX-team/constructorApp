@@ -11,7 +11,9 @@ import {
   Dimensions,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Keyboard,
+  Easing
 } from 'react-native';
 import { customAlert } from '../services/customAlertService';
 import { router } from 'expo-router';
@@ -19,6 +21,8 @@ import { Colors } from '../constants/Colors';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import ResetPasswordModal from '../components/ResetPasswordModal';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 interface LoginScreenProps {
   navigation?: any;
@@ -29,26 +33,56 @@ const { width, height } = Dimensions.get('window');
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [superPassword, setSuperPassword] = useState('');
+  const [accessKey, setAccessKey] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const [resetVisible, setResetVisible] = useState(false);
   const { login } = useAuth();
 
   // Animation values
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(50)).current;
   const buttonScale = React.useRef(new Animated.Value(1)).current;
+  const keyboardHeightAnim = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     fadeAnim.setValue(1);
     slideAnim.setValue(0);
   }, [fadeAnim, slideAnim]);
 
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: any) => {
+      const h = e.endCoordinates?.height || 0;
+      Animated.timing(keyboardHeightAnim, {
+        toValue: h,
+        duration: Platform.OS === 'ios' ? 260 : 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const onHide = () => {
+      Animated.timing(keyboardHeightAnim, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? 220 : 200,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const s1 = Keyboard.addListener(showEvent as any, onShow);
+    const s2 = Keyboard.addListener(hideEvent as any, onHide);
+    return () => { s1.remove(); s2.remove(); };
+  }, [keyboardHeightAnim]);
+
   const handleLogin = async () => {
-    if (!email || (!isAdmin && !password) || (isAdmin && !superPassword)) {
-      customAlert.error('Error', 'Please fill in all required fields');
+    if (!email || !password) {
+      customAlert.error('Error', 'Please fill in email and password');
       return;
     }
 
@@ -60,13 +94,22 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      const user = await login(email, password, isAdmin ? superPassword : undefined);
+      const adminAccessKey = isAdmin ? 'admin123' : undefined;
+      const user = await login(email, password, adminAccessKey);
       
-      // Redirect based on user role
-      if (user.role === 'admin') {
+      // Enforce mode + role constraints
+      if (isAdmin) {
+        if (user.role !== 'admin') {
+          customAlert.error('Access Denied', 'This account is not an admin. Switch to User mode to sign in.');
+          return;
+        }
         router.replace('/admin-panel');
       } else {
-        router.replace('/site-selection');
+        if (user.role === 'admin') {
+          router.replace('/admin-panel');
+        } else {
+          router.replace('/site-selection');
+        }
       }
     } catch (error: any) {
       customAlert.error('Login Failed', error.message);
@@ -77,7 +120,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
   const toggleAdminMode = () => {
     setPassword('');
-    setSuperPassword('');
+    setAccessKey('');
   };
 
   return (
@@ -92,15 +135,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       
       <KeyboardAvoidingView 
         style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.select({ ios: 0, android: 0 }) as number}
       >
-        <ScrollView 
+        <KeyboardAwareScrollView 
           style={styles.scrollContainer} 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          enableOnAndroid
+          extraScrollHeight={90}
+          enableAutomaticScroll
+          keyboardOpeningTime={250}
         >
         <Animated.View 
           style={[
@@ -193,18 +240,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               focusedInput === 'password' && styles.focusedInput
             ]}>
               <Ionicons 
-                name={isAdmin ? "key-outline" : "lock-closed-outline"} 
+                name="lock-closed-outline"
                 size={22} 
                 color={Colors.light.icon} 
                 style={styles.inputIcon} 
               />
               <TextInput
                 style={styles.input}
-                placeholder={isAdmin ? "Superuser Password" : "Password"}
+                placeholder="Password"
                 placeholderTextColor={Colors.light.icon + '80'}
                 secureTextEntry={!showPassword}
-                value={isAdmin ? superPassword : password}
-                onChangeText={isAdmin ? setSuperPassword : setPassword}
+                value={password}
+                onChangeText={setPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
                 selectTextOnFocus={true}
@@ -224,6 +271,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                 />
               </TouchableOpacity>
             </View>
+
           </View>
 
           {/* Enhanced Login Button */}
@@ -255,19 +303,22 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
           {/* Enhanced Footer */}
           <View style={styles.footer}>
+            <TouchableOpacity style={styles.forgotButton} onPress={() => setResetVisible(true)}>
+              <Text style={styles.forgotText}>Forgot Password?</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/signup')} style={styles.switchButton}>
               <Text style={styles.switchText}>
                 Don't have an account? <Text style={styles.switchTextBold}>Sign Up</Text>
               </Text>
             </TouchableOpacity>
-            
-            {/* <TouchableOpacity style={styles.forgotButton}>
-              <Text style={styles.forgotText}>Forgot Password?</Text>
-            </TouchableOpacity> */}
           </View>
         </Animated.View>
-        </ScrollView>
+          {/* Animated spacer to smoothen keyboard lift */}
+          <Animated.View style={{ height: keyboardHeightAnim.interpolate({ inputRange: [0, 400], outputRange: [0, 40], extrapolate: 'clamp' }) }} />
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
+      {/* Reset Password Modal */}
+      <ResetPasswordModal visible={resetVisible} onClose={() => setResetVisible(false)} />
     </View>
   );
 };
@@ -477,10 +528,10 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    gap: 20,
+    gap: 10,
   },
   switchButton: {
-    padding: 12,
+    padding: 0,
   },
   switchText: {
     fontSize: 16,
@@ -493,11 +544,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   forgotButton: {
-    padding: 12,
+    padding: 0,
   },
   forgotText: {
     fontSize: 16,
-    color: Colors.light.tint,
+    color: Colors.light.new,
     fontWeight: '600',
   },
 });
