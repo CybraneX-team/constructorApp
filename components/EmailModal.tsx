@@ -152,7 +152,7 @@ function buildDailyWorkSummaryHtml(record: any): string {
               <div class="doc-title">Daily Work Summary</div>
               <div class="meta-grid">
                 <div class="meta-label">Date:</div>
-                <div class="meta-value">${escapeHtml(record.date || '')}</div>
+                <div class="meta-value">${escapeHtml(record.local_date || '')}</div>
                 <div class="meta-label">Job</div>
                 <div class="meta-value">${escapeHtml(record.jobNumber || '')}</div>
               </div>
@@ -167,9 +167,9 @@ function buildDailyWorkSummaryHtml(record: any): string {
             <div class="images-grid">
               ${record.images.map((image: any, index: number) => `
                 <div class="image-container">
-                  <img src="${image.presignedUrl}" alt="Site Photo ${index + 1}" class="site-image" />
+                  <img src="${image.url || image.presignedUrl}" alt="Site Photo ${index + 1}" class="site-image" />
                   <div class="image-caption">
-                    ${image.originalName || `Photo ${index + 1}`}
+                    ${image.original_name || image.originalName || `Photo ${index + 1}`}
                     ${image.customMetadata?.caption ? ` - ${escapeHtml(image.customMetadata.caption)}` : ''}
                   </div>
                 </div>
@@ -210,6 +210,8 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
   onBack,
   isSending,
 }) => {
+  const { token } = useAuth();
+  const { selectedSite } = useSite();
   const [previewData, setPreviewData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -223,10 +225,16 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
     try {
       setLoading(true);
       
-      // Get the structured summary for preview
-      const summary = selectedRecord.structuredSummary;
+      if (!token || !selectedSite) {
+        throw new Error('Missing authentication or site data');
+      }
       
-      if (summary) {
+      // Get the structured summary from the backend
+      const summaryResponse = await recordingService.getRecordingSummary(selectedRecord.id, token);
+      
+      if (summaryResponse.success && summaryResponse.summary) {
+        const summary = summaryResponse.summary;
+        
         // Filter out empty data
         const filteredSummary = {
           ...summary,
@@ -257,27 +265,25 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
         
         setPreviewData(filteredSummary);
       } else {
-        // Fallback to basic info
+        // Fallback to basic info from day log
         setPreviewData({
-          title: `Daily Report - ${selectedRecord.date}`,
-          jobNumber: selectedRecord.jobNumber,
-          date: selectedRecord.date,
-          duration: selectedRecord.totalDuration,
-          recordingCount: selectedRecord.recordingCount,
-          dailyActivities: selectedRecord.consolidatedSummary && selectedRecord.consolidatedSummary.trim() !== "" 
-            ? selectedRecord.consolidatedSummary 
-            : null,
+          title: `Daily Report - ${selectedRecord.local_date}`,
+          jobNumber: selectedSite.site_id, // Use site_id as job number
+          date: selectedRecord.local_date,
+          duration: selectedRecord.total_duration,
+          recordingCount: selectedRecord.recording_count,
+          dailyActivities: null,
         });
       }
       
     } catch (error) {
       console.error('Error generating preview:', error);
       setPreviewData({
-        title: `Daily Report - ${selectedRecord.date}`,
-        jobNumber: selectedRecord.jobNumber,
-        date: selectedRecord.date,
-        duration: selectedRecord.totalDuration,
-        recordingCount: selectedRecord.recordingCount,
+        title: `Daily Report - ${selectedRecord.local_date}`,
+        jobNumber: selectedSite?.site_id || 'Unknown',
+        date: selectedRecord.local_date,
+        duration: selectedRecord.total_duration,
+        recordingCount: selectedRecord.recording_count,
         dailyActivities: null,
       });
     } finally {
@@ -548,10 +554,10 @@ const EmailModal: React.FC<EmailModalProps> = ({
 
   const generateEmailContent = (record: any, filteredData: any) => {
     let content = `Daily Construction Report
-Date: ${record.date}
-Job Number: ${record.jobNumber}
-Duration: ${record.totalDuration}
-Recording Count: ${record.recordingCount}
+Date: ${record.local_date}
+Job Number: ${selectedSite?.site_id || 'Unknown'}
+Duration: ${record.total_duration}
+Recording Count: ${record.recording_count}
 
 `;
 
@@ -644,7 +650,7 @@ Recording Count: ${record.recordingCount}
 
       // Test network connectivity first
       console.log('📧 Testing network connectivity...');
-      let baseUrl: string = API_CONFIG.BASE_URL || 'http://13.203.216.38:3000';
+      let baseUrl: string = API_CONFIG.BASE_URL || 'http://98.80.71.172:3000';
       
       // Simple timeout function
       const timeout = (ms: number) => new Promise((_, reject) => 
@@ -715,24 +721,24 @@ Recording Count: ${record.recordingCount}
 
       // Create FormData with the PDF file and stakeholders
       const formData = new FormData();
-      formData.append('dayRecordingId', selectedRecord.id);
+      formData.append('day_id', selectedRecord.id); // Changed from dayRecordingId to day_id
       formData.append('stakeholders', JSON.stringify(selectedSite.stakeholders));
       
       // Add the PDF file to FormData
       formData.append('pdf', {
         uri: uri,
         type: 'application/pdf',
-        name: `daily-report-${selectedRecord.date}.pdf`
+        name: `daily-report-${selectedRecord.local_date || selectedRecord.date}.pdf`
       } as any);
 
-      console.log('📧 Sending email request to:', `${baseUrl}/email-day-recording`);
-      console.log('📧 Form data contains dayRecordingId, stakeholders, and PDF file');
+      console.log('📧 Sending email request to:', `${baseUrl}/recording/email-day-recording`);
+      console.log('📧 Form data contains day_id, stakeholders, and PDF file');
       console.log('📧 Stakeholders being sent:', selectedSite.stakeholders);
       console.log('📧 Token:', token ? `${token.substring(0, 20)}...` : 'No token');
       console.log('📧 Using baseUrl:', baseUrl);
-      console.log('📧 Full URL:', `${baseUrl}/email-day-recording`);
+      console.log('📧 Full URL:', `${baseUrl}/recording/email-day-recording`);
 
-      const response = await fetch(`${baseUrl}/email-day-recording`, {
+      const response = await fetch(`${baseUrl}/recording/email-day-recording`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -789,7 +795,7 @@ Recording Count: ${record.recordingCount}
         throw new Error('Invalid response from server. Please try again.');
       }
 
-      if (result.success) {
+      if (result.ok || result.success) {
         const stakeholderCount = result.stakeholderCount || result.recipients?.length || 'all';
         customAlert.success(
           'Success',
@@ -851,10 +857,10 @@ Recording Count: ${record.recordingCount}
       activeOpacity={0.7}
     >
       <View style={styles.recordInfo}>
-        <Text style={styles.recordDate}>{item.date}</Text>
-        <Text style={styles.recordJobNumber}>Job: {item.jobNumber}</Text>
+        <Text style={styles.recordDate}>{item.local_date}</Text>
+        <Text style={styles.recordJobNumber}>Job: {selectedSite?.site_id || 'Unknown'}</Text>
         <Text style={styles.recordDuration}>
-          {item.totalDuration} • {item.recordingCount} recording{item.recordingCount > 1 ? 's' : ''}
+          {item.total_duration} • {item.recording_count} recording{item.recording_count > 1 ? 's' : ''}
         </Text>
       </View>
       <MaterialIcons name="chevron-right" size={24} color="#8E8E93" />

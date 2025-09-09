@@ -349,9 +349,10 @@ class RecordingService {
    * Search recordings using backend AI search
    * @param query - The search query from user
    * @param token - JWT authentication token
+   * @param job_id - Optional site ObjectId to filter search results
    * @returns Promise with search results
    */
-  async searchRecordings(query: string, token: string): Promise<{
+  async searchRecordings(query: string, token: string, job_id?: string): Promise<{
     success: boolean;
     message?: string;
     recordings: any[];
@@ -360,6 +361,7 @@ class RecordingService {
   }> {
     try {
       console.log('🔍 Searching recordings with query:', query);
+      console.log('🔍 Job ID filter:', job_id || 'No job filter');
       console.log('🔑 Using token:', token ? 'Token provided' : 'No token');
       console.log('🌐 Backend URL:', this.baseUrl);
       
@@ -373,10 +375,21 @@ class RecordingService {
       };
       console.log('📋 Request headers:', headers);
       
+      // New Rust backend requires { job_id, query }
+      if (!job_id) {
+        throw new Error('job_id is required for search. Please select a site first.');
+      }
+      
+      const requestBody = {
+        query,
+        job_id
+      };
+      console.log('📋 Request body:', requestBody);
+      
       const response = await fetch(searchUrl, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(requestBody),
       });
 
       console.log('📡 Search response status:', response.status);
@@ -391,11 +404,16 @@ class RecordingService {
       const result = await response.json();
       console.log('✅ Search successful:', result);
       
+      // Transform the new backend response format
+      // Backend returns: { message: string|null, day_logs: [...] }
+      // Frontend expects: { success, message, recordings, count }
+      const dayLogs = result.day_logs || [];
+      
       return {
-        success: result.success,
-        message: result.message,
-        recordings: result.recordings || [],
-        count: result.count || 0,
+        success: true,
+        message: result.message || null,
+        recordings: dayLogs,
+        count: dayLogs.length,
       };
 
     } catch (error) {
@@ -405,7 +423,7 @@ class RecordingService {
       if (error instanceof TypeError && error.message === 'Network request failed') {
         console.error('🔍 Network debugging info:');
         console.error('   - Backend URL:', this.baseUrl);
-        console.error('   - Full search URL:', `${this.baseUrl}/search`);
+        console.error('   - Full search URL:', `${this.baseUrl}/recording/search`);
         console.error('   - Check if backend is running and accessible');
         console.error('   - Verify network connectivity');
         console.error('   - For Android: ensure android:usesCleartextTraffic="true" in manifest');
@@ -654,7 +672,7 @@ class RecordingService {
 
   /**
    * Delete a day recording using new Rust backend
-   * @param dayRecordingId - The day recording ID (format: YYYY-MM-DD_jobNumber)
+   * @param dayRecordingId - The day recording ID (day log ObjectId)
    * @param token - JWT authentication token
    * @returns Promise with delete result
    */

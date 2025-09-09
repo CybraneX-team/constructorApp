@@ -18,8 +18,18 @@ export const useCircularProgressData = (): CircularProgressData => {
   const [isLoading, setIsLoading] = useState(false);
   const [isFirstTime, setIsFirstTime] = useState(false);
 
-  // Get job progress data
-  const { jobProgress, refreshProgress } = useJobProgress(selectedSite?.siteId || 'CFX 417-151', token || undefined);
+  // Get job progress data (site filter optional)
+  const { jobProgress, refreshProgress } = useJobProgress(selectedSite?.id, token || undefined);
+
+  // Watchdog: ensure loader never gets stuck
+  useEffect(() => {
+    if (!isLoading) return;
+    const watchdog = setTimeout(() => {
+      console.log(`[${new Date().toISOString()}] ⏱️ PROGRESS_WATCHDOG - forcing loader to hide after timeout`);
+      setIsLoading(false);
+    }, 8000); // 8s safety timeout
+    return () => clearTimeout(watchdog);
+  }, [isLoading]);
 
   // Check if it's first time login
   useEffect(() => {
@@ -33,36 +43,30 @@ export const useCircularProgressData = (): CircularProgressData => {
 
   // Load initial data
   const loadInitialData = useCallback(async () => {
-    if (!token || !selectedSite?.siteId) return;
+    if (!token) return;
 
     setIsLoading(true);
-    console.log(`[${new Date().toISOString()}] 🔄 INIT_LOAD_START - Site: ${selectedSite.siteId}`);
+    console.log(`[${new Date().toISOString()}] 🔄 INIT_LOAD_START - Site: ${selectedSite?.id || 'all'}`);
 
     try {
-      // Load work progress data
       await refreshProgress();
-      
-      // Mark first time login as complete
       if (isFirstTime) {
         await cacheService.setFirstTimeLoginComplete();
         setIsFirstTime(false);
         console.log(`[${new Date().toISOString()}] ✅ FIRST_TIME_COMPLETE`);
       }
-      
       console.log(`[${new Date().toISOString()}] ✅ INIT_LOAD_SUCCESS`);
     } catch (error) {
       console.log(`[${new Date().toISOString()}] ❌ INIT_LOAD_ERROR - ${error}`);
     } finally {
       setIsLoading(false);
     }
-  }, [token, selectedSite?.siteId, isFirstTime, refreshProgress]);
+  }, [token, selectedSite?.id, isFirstTime, refreshProgress]);
 
   // Simple refresh function
   const refreshData = useCallback(async () => {
-    if (!token || !selectedSite?.siteId) return;
-
+    if (!token) return;
     console.log(`[${new Date().toISOString()}] 🔄 REFRESH_START`);
-    
     try {
       await refreshProgress();
       console.log(`[${new Date().toISOString()}] ✅ REFRESH_SUCCESS`);

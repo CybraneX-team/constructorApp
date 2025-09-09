@@ -21,6 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { useAuth } from '../contexts/AuthContext';
+import { useSite } from '../contexts/SiteContext';
 import { recordingService } from '../services/recordingService';
 import EmailModal from './EmailModal';
 
@@ -208,6 +209,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   onRecordClick,
 }) => {
   const { token } = useAuth(); // Get the auth token
+  const { selectedSite } = useSite(); // Get the selected site
   const [inputText, setInputText] = useState("");
   
   // Global message ID counter to ensure unique IDs
@@ -289,6 +291,17 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
       return responses;
     }
 
+    if (!selectedSite?.id) {
+      responses.push({
+        id: generateUniqueId(),
+        text: "🏗️ Please select a site first to search recordings.",
+        isUser: false,
+        timestamp: new Date(),
+        type: "text",
+      });
+      return responses;
+    }
+
     try {
       console.log('🔍 Performing backend search with query:', query);
       
@@ -308,7 +321,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
       }
       console.log('✅ Backend connectivity confirmed');
       
-      let result = await recordingService.searchRecordings(query, token);
+      let result = await recordingService.searchRecordings(query, token, selectedSite?.id);
       
       // If we get a 401/403 error (token expired), user needs to login again
       if (!result.success && result.error && (result.error.includes('401') || result.error.includes('403'))) {

@@ -11,41 +11,36 @@ interface UseJobProgressResult {
   refreshProgress: () => Promise<void>;
 }
 
-export const useJobProgress = (jobNumber?: string, token?: string): UseJobProgressResult => {
+// siteId is optional; when undefined, backend will compute overall progress across all sites
+export const useJobProgress = (siteId?: string, token?: string): UseJobProgressResult => {
   const [jobProgress, setJobProgress] = useState<ProcessedJobProgress | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchJobProgress = useCallback(async (forceJobNumber?: string) => {
-    const currentJobNumber = forceJobNumber || jobNumber;
-    
-    if (!currentJobNumber) {
-      // Use mock data if no job number provided (for development/testing)
-      setJobProgress(jobProgressService.getMockJobProgress());
-      return;
-    }
+  const fetchJobProgress = useCallback(async (forceSiteId?: string) => {
+    const currentSiteId = forceSiteId ?? siteId;
 
     setLoading(true);
     setError(null);
-    
+
     try {
-      const cacheKey = `${currentJobNumber}-${token || 'no-token'}`;
+      const cacheKey = `${currentSiteId || 'all'}-${token || 'no-token'}`;
       let request = requestCache.get(cacheKey);
       if (!request) {
-        request = jobProgressService.getJobProgress(currentJobNumber, token);
+        request = jobProgressService.getJobProgress(currentSiteId, token);
         requestCache.set(cacheKey, request);
       }
       const progress = await request;
       requestCache.delete(cacheKey);
       setJobProgress(progress);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch job progress';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch progress';
       setError(errorMessage);
-      console.error('❌ Error fetching job progress:', err);
+      console.error('❌ Error fetching progress:', err);
     } finally {
       setLoading(false);
     }
-  }, [jobNumber, token]);
+  }, [siteId, token]);
 
   const refreshProgress = useCallback(async () => {
     await fetchJobProgress();

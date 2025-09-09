@@ -1,16 +1,21 @@
 // Job Progress API Service
 export interface JobProgressResponse {
   success: boolean;
-  jobNumber: string;
-  progress: {
+  jobNumber?: string;
+  progress?: {
     completionPercentage: number;
-    tasksCompleted: number;
-    tasksLeft: number;
-    totalTasks: number;
+    tasksCompleted?: number;
+    tasksLeft?: number;
+    totalTasks?: number;
   };
-  taskDetails: {
+  taskDetails?: {
     [key: string]: boolean; // true = completed, false = not completed
   };
+  // New backend flexible fields
+  completion_percentage?: number;
+  completionPercentage?: number;
+  task_flags?: { [key: string]: boolean };
+  tasks?: { [key: string]: boolean };
 }
 
 export interface JobTask {
@@ -35,7 +40,7 @@ export interface ProcessedJobProgress {
       completedTasks: number;
       progressPercentage: number;
     };
-  };
+  } | { [key: string]: boolean };
 }
 
 class JobProgressService {
@@ -47,21 +52,22 @@ class JobProgressService {
     console.log('🔧 JobProgressService initialized with URL:', this.baseUrl);
   }
 
-  async getJobProgress(jobNumber: string, token?: string): Promise<ProcessedJobProgress> {
-    const apiUrl = `${this.baseUrl}/progress?jobNumber=${encodeURIComponent(jobNumber)}`;
-    console.log('🔍 Fetching job progress for:', jobNumber, 'from URL:', apiUrl);
+  // siteId is optional; when provided, the backend filters to that site
+  async getJobProgress(siteId?: string, token?: string): Promise<ProcessedJobProgress> {
+    const query = siteId ? `?site=${encodeURIComponent(siteId)}` : '';
+    const apiUrl = `${this.baseUrl}/progress${query}`;
+    console.log('🔍 Fetching progress for site:', siteId || '(all)', 'from URL:', apiUrl);
     
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
       
-      // Add authentication header if token is provided
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
-        console.log('🔑 Including authorization token in job progress request');
+        console.log('🔑 Including authorization token in progress request');
       } else {
-        console.warn('⚠️ No authentication token provided for job progress request');
+        console.warn('⚠️ No authentication token provided for progress request');
       }
 
       const response = await fetch(apiUrl, {
@@ -74,37 +80,22 @@ class JobProgressService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Job progress fetch failed:', response.status, errorText);
+        console.error('❌ Progress fetch failed:', response.status, errorText);
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
       const data: JobProgressResponse = await response.json();
-      // console.log('✅ Job progress data received:', data);
-      
-      if (!data.success) {
-        console.error('❌ API returned unsuccessful response:', data);
-        throw new Error('API returned unsuccessful response');
-      }
-
-      const processedData = this.processJobProgressData(data);
-      // console.log('✅ Job progress processed:', processedData);
-      return processedData;
+      return this.processJobProgressData(data);
     } catch (error) {
-      console.error('❌ Error fetching job progress:', error);
+      console.error('❌ Error fetching progress:', error);
       
-      // Enhanced error logging
       if (error instanceof TypeError && error.message === 'Network request failed') {
         console.error('🔍 Network debugging info:');
         console.error('   - Backend URL:', this.baseUrl);
         console.error('   - Full API URL:', apiUrl);
-        console.error('   - Check if backend is running and accessible');
-        console.error('   - Verify network connectivity');
-        console.error('   - For Android: ensure android:usesCleartextTraffic="true" in manifest');
-        console.error('   - For iOS: check App Transport Security settings');
       }
       
       console.log('ℹ️ Falling back to default progress data');
-      // Return default/empty data in case of error to show the modal is working
       return {
         overallProgress: 0,
         tasksCompleted: 0,
@@ -121,39 +112,46 @@ class JobProgressService {
   private processJobProgressData(data: JobProgressResponse): ProcessedJobProgress {
     console.log('🔍 Processing job progress data:', data);
     
-    // The API returns a different structure than expected
-    // API response: { progress: { completionPercentage, tasksCompleted, tasksLeft, totalTasks }, taskDetails: {...} }
-    
-    // Create tasks based on taskDetails
+    // Normalize fields from both old and new backends
+    const completion = data.progress?.completionPercentage
+      ?? data.completion_percentage
+      ?? data.completionPercentage
+      ?? 0;
+
+    const flags = data.taskDetails
+      ?? data.task_flags
+      ?? data.tasks
+      ?? {};
+
+    // Build task arrays from flags
     const allTasks: JobTask[] = [];
     const remainingTasks: JobTask[] = [];
-    
-    if (data.taskDetails) {
-      Object.entries(data.taskDetails).forEach(([category, isCompleted]) => {
-        const task: JobTask = {
-          category: this.formatCategoryName(category),
-          task: `${this.formatCategoryName(category)} tasks`,
-          status: isCompleted ? 'completed' as const : 'not_started' as const,
-          completionPercentage: isCompleted ? 100 : 0,
-          evidence: [],
-        };
-        
-        allTasks.push(task);
-        if (!isCompleted) {
-          remainingTasks.push(task);
-        }
-      });
-    }
+    Object.entries(flags).forEach(([category, isCompleted]) => {
+      const normalizedName = this.formatCategoryName(category);
+      const task: JobTask = {
+        category: normalizedName,
+        task: `${normalizedName} tasks`,
+        status: isCompleted ? 'completed' : 'not_started',
+        completionPercentage: isCompleted ? 100 : 0,
+        evidence: [],
+      };
+      allTasks.push(task);
+      if (!isCompleted) remainingTasks.push(task);
+    });
+
+    // Derive counts from flags
+    const totalTasks = Object.keys(flags).length || (data.progress?.totalTasks ?? 0);
+    const tasksCompleted = Object.values(flags).filter(Boolean).length || (data.progress?.tasksCompleted ?? 0);
 
     return {
-      overallProgress: data.progress?.completionPercentage || 0,
-      tasksCompleted: data.progress?.tasksCompleted || 0,
-      totalTasks: data.progress?.totalTasks || 0,
-      inProgressTasks: 0, // API doesn't provide in-progress count
+      overallProgress: completion,
+      tasksCompleted,
+      totalTasks,
+      inProgressTasks: 0,
       remainingTasks,
       allTasks,
       lastUpdated: new Date().toISOString(),
-      categories: data.taskDetails || {},
+      categories: flags,
     };
   }
 
@@ -161,168 +159,28 @@ class JobProgressService {
     return category
       .replace(/([A-Z])/g, ' $1')
       .replace(/^./, str => str.toUpperCase())
-      .replace('Labour', 'Labor');
-  }
-
-  private getDefaultJobProgress(): ProcessedJobProgress {
-    // Fallback data in case API fails
-    return {
-      overallProgress: 50,
-      tasksCompleted: 5,
-      totalTasks: 10,
-      inProgressTasks: 3,
-      remainingTasks: [
-        {
-          category: 'Construction',
-          task: 'Complete foundation inspection',
-          status: 'not_started',
-          completionPercentage: 0,
-          evidence: [],
-        },
-        {
-          category: 'Construction', 
-          task: 'Install electrical wiring',
-          status: 'in_progress',
-          completionPercentage: 25,
-          evidence: [],
-        },
-        {
-          category: 'Construction',
-          task: 'Finish drywall installation',
-          status: 'not_started',
-          completionPercentage: 0,
-          evidence: [],
-        },
-        {
-          category: 'Quality Control',
-          task: 'Paint interior walls',
-          status: 'not_started',
-          completionPercentage: 0,
-          evidence: [],
-        },
-      ],
-      allTasks: [],
-      lastUpdated: new Date().toISOString(),
-      categories: {},
-    };
+      .replace('Labour', 'Labor')
+      .replace('Materialsdeliveries', 'Materials Deliveries');
   }
 
   // Method to get mock data for development/testing
   getMockJobProgress(): ProcessedJobProgress {
-    const mockData: JobProgressResponse = {
-      "success": true,
-      "jobNumber": "JOB-4432",
-      "overallProgress": 67,
-      "lastUpdated": "2025-08-26T15:30:00.000Z",
-      "summary": {
-        "totalTasks": 14,
-        "completedTasks": 9,
-        "inProgressTasks": 3,
-        "notStartedTasks": 2
+    return {
+      overallProgress: 50,
+      tasksCompleted: 3,
+      totalTasks: 5,
+      inProgressTasks: 0,
+      remainingTasks: [],
+      allTasks: [],
+      lastUpdated: new Date().toISOString(),
+      categories: {
+        dailyActivities: false,
+        labour: true,
+        subcontractors: true,
+        materialsDeliveries: false,
+        equipment: false,
       },
-      "categories": {
-        "Management": {
-          "totalTasks": 1,
-          "completedTasks": 1,
-          "progressPercentage": 100
-        },
-        "Labor": {
-          "totalTasks": 3,
-          "completedTasks": 2,
-          "progressPercentage": 67
-        },
-        "Materials": {
-          "totalTasks": 2,
-          "completedTasks": 2,
-          "progressPercentage": 100
-        },
-        "Equipment": {
-          "totalTasks": 3,
-          "completedTasks": 2,
-          "progressPercentage": 67
-        },
-        "Construction": {
-          "totalTasks": 3,
-          "completedTasks": 1,
-          "progressPercentage": 33
-        },
-        "Quality Control": {
-          "totalTasks": 1,
-          "completedTasks": 0,
-          "progressPercentage": 0
-        },
-        "Logistics": {
-          "totalTasks": 1,
-          "completedTasks": 1,
-          "progressPercentage": 100
-        }
-      },
-      "tasks": {
-        "completed": [
-          {
-            "category": "Management",
-            "task": "Project Management",
-            "status": "completed",
-            "completionPercentage": 100,
-            "evidence": ["manager: 45.5 hours"]
-          },
-          {
-            "category": "Materials",
-            "task": "Concrete Delivery",
-            "status": "completed",
-            "completionPercentage": 100,
-            "evidence": ["Argos Class 4: 150.5 CY"]
-          }
-        ],
-        "inProgress": [
-          {
-            "category": "Construction",
-            "task": "Concrete Pouring",
-            "status": "in_progress",
-            "completionPercentage": 75,
-            "evidence": [
-              "[2025-08-26]: Poured 25 cubic yards of concrete for retaining wall"
-            ]
-          },
-          {
-            "category": "Equipment",
-            "task": "Excavator Operations",
-            "status": "in_progress",
-            "completionPercentage": 60,
-            "evidence": [
-              "[2025-08-26]: Completed 60% of excavation work"
-            ]
-          },
-          {
-            "category": "Labor",
-            "task": "Site Preparation",
-            "status": "in_progress",
-            "completionPercentage": 80,
-            "evidence": [
-              "[2025-08-26]: Site clearing nearly complete"
-            ]
-          }
-        ],
-        "notStarted": [
-          {
-            "category": "Quality Control",
-            "task": "Survey and Layout",
-            "status": "not_started",
-            "completionPercentage": 0,
-            "evidence": []
-          },
-          {
-            "category": "Construction",
-            "task": "Electrical Installation",
-            "status": "not_started",
-            "completionPercentage": 0,
-            "evidence": []
-          }
-        ]
-      }
     };
-
-    return this.processJobProgressData(mockData);
   }
 }
 

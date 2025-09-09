@@ -80,7 +80,7 @@ const InitialLoader: React.FC<InitialLoaderProps> = ({
           />
         </Animated.View>
         
-        <Text style={styles.title}>VoiceAI Expo</Text>
+        <Text style={styles.title}>Qualis Concrete</Text>
         <Text style={styles.message}>{message}</Text>
         
         <View style={styles.progressContainer}>
