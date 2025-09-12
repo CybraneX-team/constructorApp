@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { customAlert } from '../services/customAlertService';
 import { API_BASE_URL } from '../utils/apiConfig';
@@ -21,19 +21,25 @@ import { API_BASE_URL } from '../utils/apiConfig';
 interface Site {
   id: string;
   name: string;
-  address: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
+  site_id: string;
+  company_name: string;
+  stakeholders: string[];
+  is_active: boolean;
+  created_by: string;
 }
 
 interface SiteFormData {
   name: string;
-  address: string;
-  description: string;
+  siteId: string; // maps to backend site_id
+  companyName: string; // maps to backend company_name
 }
 
 const AdminPanel: React.FC = () => {
+  const navigation = useNavigation();
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false, title: 'Admin Panel' });
+  }, [navigation]);
+
   const { user, token, logout } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,8 +49,8 @@ const AdminPanel: React.FC = () => {
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [formData, setFormData] = useState<SiteFormData>({
     name: '',
-    address: '',
-    description: '',
+    siteId: '',
+    companyName: '',
   });
 
   useEffect(() => {
@@ -59,7 +65,7 @@ const AdminPanel: React.FC = () => {
   const loadSites = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/sites/`, {
+      const response = await fetch(`${API_BASE_URL}/sites`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -71,7 +77,7 @@ const AdminPanel: React.FC = () => {
       }
 
       const data = await response.json();
-      setSites(data.sites || data || []);
+      setSites((data && data.sites) ? data.sites : []);
     } catch (error) {
       console.error('Error loading sites:', error);
       customAlert.error('Error', 'Failed to load sites. Please try again.');
@@ -87,29 +93,35 @@ const AdminPanel: React.FC = () => {
   };
 
   const handleAddSite = async () => {
-    if (!formData.name.trim() || !formData.address.trim()) {
-      customAlert.error('Error', 'Please fill in site name and address');
+    if (!formData.name.trim() || !formData.siteId.trim()) {
+      customAlert.error('Error', 'Please fill in site name and site ID');
       return;
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/sites/`, {
+      const response = await fetch(`${API_BASE_URL}/sites`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: formData.name, site_id: formData.address, company_name: formData.description, is_active: true }),
+        body: JSON.stringify({
+          name: formData.name,
+          site_id: formData.siteId,
+          company_name: formData.companyName,
+          stakeholders: [],
+          is_active: true,
+        }),
       });
 
       if (!response.ok) {
         throw new Error(`Failed to create site: ${response.status}`);
       }
 
-      const newSite = await response.json();
-      setSites([...(sites || []), newSite]);
+      // Backend returns only { id }, so reload the list to reflect all sites
+      await loadSites();
       setShowAddModal(false);
-      setFormData({ name: '', address: '', description: '' });
+      setFormData({ name: '', siteId: '', companyName: '' });
       customAlert.success('Success', 'Site created successfully!');
     } catch (error) {
       console.error('Error creating site:', error);
@@ -118,8 +130,8 @@ const AdminPanel: React.FC = () => {
   };
 
   const handleEditSite = async () => {
-    if (!editingSite || !formData.name.trim() || !formData.address.trim()) {
-      customAlert.error('Error', 'Please fill in site name and address');
+    if (!editingSite || !formData.name.trim()) {
+      customAlert.error('Error', 'Please fill in site name');
       return;
     }
 
@@ -130,20 +142,23 @@ const AdminPanel: React.FC = () => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: formData.name, site_id: formData.address, company_name: formData.description }),
+        body: JSON.stringify({
+          name: formData.name,
+          company_name: formData.companyName || undefined,
+          stakeholders: undefined,
+          is_active: undefined,
+        }),
       });
 
       if (!response.ok) {
         throw new Error(`Failed to update site: ${response.status}`);
       }
 
-      const updatedSite = await response.json();
-      setSites(sites.map(site => 
-        site.id === editingSite.id ? updatedSite : site
-      ));
+      // Backend returns { ok: true }, so reload list
+      await loadSites();
       setShowEditModal(false);
       setEditingSite(null);
-      setFormData({ name: '', address: '', description: '' });
+      setFormData({ name: '', siteId: '', companyName: '' });
       customAlert.success('Success', 'Site updated successfully!');
     } catch (error) {
       console.error('Error updating site:', error);
@@ -174,7 +189,7 @@ const AdminPanel: React.FC = () => {
                 throw new Error(`Failed to delete site: ${response.status}`);
               }
 
-              setSites(sites.filter(s => s.id !== site.id));
+              await loadSites();
               customAlert.success('Success', 'Site deleted successfully!');
             } catch (error) {
               console.error('Error deleting site:', error);
@@ -190,8 +205,8 @@ const AdminPanel: React.FC = () => {
     setEditingSite(site);
     setFormData({
       name: site.name,
-      address: site.address,
-      description: site.description || '',
+      siteId: site.site_id,
+      companyName: site.company_name || '',
     });
     setShowEditModal(true);
   };
@@ -200,7 +215,7 @@ const AdminPanel: React.FC = () => {
     setShowAddModal(false);
     setShowEditModal(false);
     setEditingSite(null);
-    setFormData({ name: '', address: '', description: '' });
+    setFormData({ name: '', siteId: '', companyName: '' });
   };
 
   const handleLogout = () => {
@@ -226,13 +241,11 @@ const AdminPanel: React.FC = () => {
       <View style={styles.siteCard}>
         <View style={styles.siteInfo}>
           <Text style={styles.siteName}>{item.name}</Text>
-          <Text style={styles.siteAddress}>{item.address}</Text>
-          {item.description && (
-            <Text style={styles.siteDescription}>{item.description}</Text>
+          <Text style={styles.siteAddress}>{item.site_id}</Text>
+          {!!item.company_name && (
+            <Text style={styles.siteDescription}>{item.company_name}</Text>
           )}
-          <Text style={styles.siteDate}>
-            Created: {new Date(item.createdAt).toLocaleDateString()}
-          </Text>
+          <Text style={styles.siteDate}>Created by: {item.created_by}</Text>
         </View>
         <View style={styles.siteActions}>
           <TouchableOpacity
@@ -282,26 +295,24 @@ const AdminPanel: React.FC = () => {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Address *</Text>
+            <Text style={styles.inputLabel}>Site ID *</Text>
             <TextInput
               style={styles.textInput}
-              value={formData.address}
-              onChangeText={(text) => setFormData({ ...formData, address: text })}
-              placeholder="Enter site address"
+              value={formData.siteId}
+              onChangeText={(text) => setFormData({ ...formData, siteId: text })}
+              placeholder="Enter site ID (business ID)"
               placeholderTextColor="#8E8E93"
             />
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Description</Text>
+            <Text style={styles.inputLabel}>Company Name</Text>
             <TextInput
               style={[styles.textInput, styles.textArea]}
-              value={formData.description}
-              onChangeText={(text) => setFormData({ ...formData, description: text })}
-              placeholder="Enter site description (optional)"
+              value={formData.companyName}
+              onChangeText={(text) => setFormData({ ...formData, companyName: text })}
+              placeholder="Enter company name (optional)"
               placeholderTextColor="#8E8E93"
-              multiline
-              numberOfLines={4}
             />
           </View>
         </ScrollView>
@@ -401,6 +412,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#8E8E93',
+    width: '100%',
+    textAlign: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -606,7 +621,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   textArea: {
-    height: 100,
+    height: 48,
     textAlignVertical: 'top',
   },
   modalFooter: {

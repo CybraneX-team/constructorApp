@@ -1,10 +1,8 @@
 
 // API Configuration for Rust backend
 const getApiBaseUrl = (): string => {
-  // New Rust backend URL
+  // Deployed Rust backend URL
   const rustBackendUrl = 'http://98.80.71.172:3000';
-  
-  // Use the new Rust backend URL for both development and production
   return rustBackendUrl;
 };
 

@@ -16,7 +16,7 @@ export const EditableLaborCard: React.FC<{
   <View style={[styles.laborCard, { borderLeftColor: color }]}>
     <View style={[styles.cardHeader, { backgroundColor: color }]}>
       <View style={styles.cardHeaderContent}>
-        <Text style={styles.cardHeaderText}>{title}</Text>
+        <Text style={styles.cardHeaderText}>{data?.roleName || title}</Text>
         {onEditField && (
           <TouchableOpacity 
             onPress={() => onEditField('labor', title, `laborData.${roleKey}`, data)}

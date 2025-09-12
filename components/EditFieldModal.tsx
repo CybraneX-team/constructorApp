@@ -112,6 +112,17 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
       case 'labor':
         return (
           <ScrollView style={styles.laborForm}>
+            {/* New: Role Name field */}
+            <View style={styles.formField}>
+              <Text style={styles.fieldLabel}>Role Name</Text>
+              <TextInput
+                style={styles.input}
+                value={value?.roleName || ''}
+                onChangeText={(text) => setValue({ ...value, roleName: text })}
+                placeholder="Manager"
+              />
+            </View>
+
             <View style={styles.formRow}>
               <View style={styles.formField}>
                 <Text style={styles.fieldLabel}>Start Time</Text>
@@ -446,7 +457,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   laborForm: {
-    maxHeight: 300,
+    maxHeight: 340,
   },
   materialForm: {
     maxHeight: 300,
