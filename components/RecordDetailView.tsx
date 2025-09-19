@@ -1060,78 +1060,146 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
   console.log('🔍 mapSummaryToRecordDetail - Starting mapping...');
   console.log('🔍 mapSummaryToRecordDetail - Existing record:', JSON.stringify(existing, null, 2));
   console.log('🔍 mapSummaryToRecordDetail - Summary data:', JSON.stringify(summary, null, 2));
-  
+
   // Some backends wrap real data inside a `summary` key. Unwrap if present.
   const s = summary && typeof summary === 'object' && summary.summary ? summary.summary : summary;
   console.log('🔍 mapSummaryToRecordDetail - Unwrapped summary:', JSON.stringify(s, null, 2));
 
-  // Accept multiple backend shapes: labor, laborData, labor_data
-  const laborSrcRaw = (s.labor || s.laborData || s.labor_data || {}) as any;
-  console.log('🔍 mapSummaryToRecordDetail - Raw labor source:', JSON.stringify(laborSrcRaw, null, 2));
-  
-  // Case-insensitive role keys and common variants
-  const roleMap: any = {};
-  for (const k of Object.keys(laborSrcRaw)) roleMap[k.toLowerCase()] = (laborSrcRaw as any)[k];
-  console.log('🔍 mapSummaryToRecordDetail - Role map:', JSON.stringify(roleMap, null, 2));
-  
-  const laborSrc: any = {
-    manager: roleMap['manager'],
-    foreman: roleMap['foreman'],
-    carpenter: roleMap['carpenter'],
-    skillLaborer: roleMap['skilllaborer'] || roleMap['skill_laborer'] || roleMap['skilledlaborer'] || roleMap['skilled_laborer'],
-    carpenterExtra: roleMap['carpenterextra'] || roleMap['carpenter_extra'] || roleMap['carpenter (extra)'],
+  // Helper to make camelCase keys from names (e.g., "Superior Team Rebar" => "superiorTeamRebar")
+  const toCamelKey = (name: string | undefined): string => {
+    if (!name || typeof name !== 'string') return '';
+    const parts = name
+      .trim()
+      .replace(/[^a-zA-Z0-9\s]/g, ' ') // remove punctuation
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return '';
+    const [first, ...rest] = parts;
+    return first.toLowerCase() + rest.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
   };
-  console.log('🔍 mapSummaryToRecordDetail - Processed labor source:', JSON.stringify(laborSrc, null, 2));
 
-  const subcontractorsSrc = s.subcontractors || s.subcontractor || {};
-  const materialsSrc = s.materialsDeliveries || s.materials || {};
-  const equipmentSrc = s.equipment || {};
-  
-  console.log('🔍 mapSummaryToRecordDetail - Subcontractors source:', JSON.stringify(subcontractorsSrc, null, 2));
-  console.log('🔍 mapSummaryToRecordDetail - Materials source:', JSON.stringify(materialsSrc, null, 2));
-  console.log('🔍 mapSummaryToRecordDetail - Equipment source:', JSON.stringify(equipmentSrc, null, 2));
+  // Helper to normalize role labels into stable keys used by UI
+  const roleToKey = (role: string | undefined): string => {
+    if (!role) return '';
+    const r = role.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (/^manager$/.test(r)) return 'manager';
+    if (/^fore(wo)?man$/.test(r)) return 'foreman';
+    if (/^carpenter(\s*\(extra\))?$/.test(r)) return r.includes('extra') ? 'carpenterExtra' : 'carpenter';
+    if (/^skilled?\s*laborer$/.test(r) || /^skill\s*laborer$/.test(r)) return 'skillLaborer';
+    // Fallback to camel key to allow rendering unknown roles
+    return toCamelKey(role);
+  };
 
-const mapped = {
+  // Build labor map from either array (new schema) or object (legacy)
+  let laborMap: Record<string, any> = {};
+  if (Array.isArray(s?.labor)) {
+    for (const item of s.labor) {
+      const key = roleToKey(item?.role);
+      if (!key) continue;
+      laborMap[key] = {
+        startTime: item?.startTime ?? '',
+        finishTime: item?.finishTime ?? '',
+        hours: item?.hours ?? '',
+        rate: (existing?.laborData?.[key]?.rate ?? '$-'),
+        total: (existing?.laborData?.[key]?.total ?? '$-'),
+        roleName: item?.role ?? key,
+      };
+    }
+  } else {
+    // Legacy object shapes: labor, laborData, labor_data
+    const laborSrcRaw = (s?.labor || s?.laborData || s?.labor_data || {}) as any;
+    for (const k of Object.keys(laborSrcRaw || {})) {
+      const key = roleToKey(k);
+      laborMap[key] = laborSrcRaw[k];
+    }
+  }
+
+  // Subcontractors: array => object keyed by name
+  let subcontractorsObj: Record<string, any> = {};
+  if (Array.isArray(s?.subcontractors)) {
+    for (const sc of s.subcontractors) {
+      const key = toCamelKey(sc?.name);
+      if (!key) continue;
+      subcontractorsObj[key] = {
+        employees: sc?.numberOfEmployees ?? sc?.employees ?? 0,
+        hours: sc?.hours ?? 0,
+        name: sc?.name ?? key,
+      };
+    }
+  } else if (s?.subcontractors || s?.subcontractor) {
+    subcontractorsObj = (s.subcontractors || s.subcontractor) as any;
+  }
+
+  // Materials: array => object with qty/uom
+  let materialsObj: Record<string, any> = {};
+  if (Array.isArray(s?.materials)) {
+    for (const m of s.materials) {
+      const key = toCamelKey(m?.name);
+      if (!key) continue;
+      const qty = m?.quantity;
+      const uom = m?.unitOfMeasure;
+      materialsObj[key] = {
+        qty: qty === undefined || qty === null ? '' : Number(qty).toFixed(2),
+        uom: uom ?? '',
+        unitRate: (existing?.materialsDeliveries?.[key]?.unitRate ?? '$-'),
+        tax: (existing?.materialsDeliveries?.[key]?.tax ?? '$-'),
+        total: (existing?.materialsDeliveries?.[key]?.total ?? '$-'),
+      };
+    }
+  } else if (s?.materialsDeliveries || s?.materials) {
+    materialsObj = (s.materialsDeliveries || s.materials) as any;
+  }
+
+  // Equipment: array => object with days
+  let equipmentObj: Record<string, any> = {};
+  if (Array.isArray(s?.equipment)) {
+    for (const eq of s.equipment) {
+      const key = toCamelKey(eq?.name);
+      if (!key) continue;
+      equipmentObj[key] = {
+        days: eq?.daysUsed ?? eq?.days ?? 0,
+        monthlyRate: (existing?.equipment?.[key]?.monthlyRate ?? '$-'),
+        itemRate: (existing?.equipment?.[key]?.itemRate ?? '$-'),
+      };
+    }
+  } else if (s?.equipment) {
+    equipmentObj = s.equipment as any;
+  }
+
+  const mapped = {
     ...existing,
-    date: summary.date || s.date || existing.date,
-    jobNumber: summary.jobNumber || s.jobNumber || existing.jobNumber,
+    date: s?.date || summary?.date || existing.date,
+    jobNumber: s?.jobId || s?.jobID || s?.job_id || summary?.jobNumber || existing.jobNumber,
     images: existing.images || [], // Preserve images from existing record
-    dailyActivities: s.activities?.text || s.activities?.description || s.dailyActivities || s.daily_activities || s.overview || existing.dailyActivities,
+    dailyActivities: s?.dailyActivities || s?.activities?.text || s?.activities?.description || s?.daily_activities || s?.overview || existing.dailyActivities,
     laborData: {
-      manager: laborSrc.manager || existing.laborData.manager,
-      foreman: laborSrc.foreman || existing.laborData.foreman,
-      carpenter: laborSrc.carpenter || existing.laborData.carpenter,
-      skillLaborer: laborSrc.skillLaborer || laborSrc.skill_laborer || existing.laborData.skillLaborer,
-      carpenterExtra: laborSrc.carpenterExtra || laborSrc.carpenter_extra || existing.laborData.carpenterExtra,
+      // Keep existing defaults then override from laborMap
+      ...existing.laborData,
+      ...laborMap,
     },
     subcontractors: {
-      superiorTeamRebar: subcontractorsSrc.superiorTeamRebar || subcontractorsSrc.superior_team_rebar || existing.subcontractors.superiorTeamRebar,
+      ...existing.subcontractors,
+      ...subcontractorsObj,
     },
     materialsDeliveries: {
-      argosClass4: materialsSrc.argosClass4 || materialsSrc.argos_class_4 || existing.materialsDeliveries.argosClass4,
-      expansionJoint: materialsSrc.expansionJoint || materialsSrc.expansion_joint || existing.materialsDeliveries.expansionJoint,
+      ...existing.materialsDeliveries,
+      ...materialsObj,
     },
     equipment: {
-      truck: equipmentSrc.truck || existing.equipment.truck,
-      equipmentTrailer: equipmentSrc.equipmentTrailer || equipmentSrc['14k EQUIPMENT TRAILER'] || equipmentSrc.trailer || existing.equipment.equipmentTrailer,
-      fuel: equipmentSrc.fuel || existing.equipment.fuel,
-      miniExcavator: equipmentSrc.miniExcavator || equipmentSrc.mini_excavator || existing.equipment.miniExcavator,
-      closedToolTrailer: equipmentSrc.closedToolTrailer || equipmentSrc.closed_tool_trailer || existing.equipment.closedToolTrailer,
-      skidStir: equipmentSrc.skidStir || equipmentSrc.skid_stir || existing.equipment.skidStir,
+      ...existing.equipment,
+      ...equipmentObj,
     },
   } as any;
 
   // Normalize labor rows to ensure hours is computed when missing
   console.log('🔍 mapSummaryToRecordDetail - Before labor normalization:', JSON.stringify(mapped.laborData, null, 2));
-  
-  mapped.laborData = {
-    manager: normalizeLaborRow(mapped.laborData.manager),
-    foreman: normalizeLaborRow(mapped.laborData.foreman),
-    carpenter: normalizeLaborRow(mapped.laborData.carpenter),
-    skillLaborer: normalizeLaborRow(mapped.laborData.skillLaborer),
-    carpenterExtra: normalizeLaborRow(mapped.laborData.carpenterExtra),
-  };
-  
+
+  const normalizedLabor: Record<string, any> = {};
+  for (const [k, v] of Object.entries(mapped.laborData || {})) {
+    normalizedLabor[k] = normalizeLaborRow(v);
+  }
+  mapped.laborData = normalizedLabor;
+
   console.log('🔍 mapSummaryToRecordDetail - After labor normalization:', JSON.stringify(mapped.laborData, null, 2));
   console.log('🔍 mapSummaryToRecordDetail - Final mapped result:', JSON.stringify(mapped, null, 2));
 

@@ -2,10 +2,6 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-ext {
-    hermesEnabled = true
-}
-
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 /**
@@ -85,9 +81,6 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
-// Define whether Hermes is enabled (Expo uses expo.jsEngine)
-// def hermesEnabled = ((findProperty('expo.jsEngine') ?: 'hermes') == 'hermes')
-
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -142,7 +135,7 @@ android {
     def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
     // Trim all elements in place.
     for (i in 0..<options.size()) options[i] = options[i].trim();
-    // `[] - ""` is essentially `[""]`.filter(Boolean) removing all empty strings.
+    // `[] - ""` is essentially `[""].filter(Boolean)` removing all empty strings.
     options -= ""
 
     if (options.length > 0) {
@@ -176,7 +169,7 @@ dependencies {
         }
     }
 
-    if (hermesEnabled) {
+    if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor

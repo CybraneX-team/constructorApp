@@ -1,34 +1,32 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  FlatList,
-  StyleSheet,
-  Platform,
-  Dimensions,
-  ActivityIndicator,
-  ScrollView,
-  BackHandler,
-  Vibration,
-} from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { customAlert } from '../services/customAlertService';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
+import * as Print from 'expo-print';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    BackHandler,
+    Dimensions,
+    FlatList,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    Vibration,
+    View,
+} from 'react-native';
+import API_CONFIG from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
+import { customAlert } from '../services/customAlertService';
 import { recordingService } from '../services/recordingService';
-import API_CONFIG from '../config/api';
-import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
 
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  interpolate,
-  Extrapolate,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming
 } from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
@@ -233,36 +231,115 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
       const summaryResponse = await recordingService.getRecordingSummary(selectedRecord.id, token);
       
       if (summaryResponse.success && summaryResponse.summary) {
-        const summary = summaryResponse.summary;
-        
-        // Filter out empty data
-        const filteredSummary = {
-          ...summary,
-          laborData: summary.laborData ? Object.fromEntries(
-            Object.entries(summary.laborData).filter(([_, data]: [string, any]) => 
-              data.hours && data.hours !== "0" && data.hours !== "0.00" && data.hours !== ""
-            )
-          ) : {},
-          materialsDeliveries: summary.materialsDeliveries ? Object.fromEntries(
-            Object.entries(summary.materialsDeliveries).filter(([_, data]: [string, any]) => 
-              data.qty && data.qty !== "0" && data.qty !== "" && data.qty !== "0.00"
-            )
-          ) : {},
-          equipment: summary.equipment ? Object.fromEntries(
-            Object.entries(summary.equipment).filter(([_, data]: [string, any]) => 
-              data.days && data.days > 0 && data.days !== "0"
-            )
-          ) : {},
-          dailyActivities: summary.dailyActivities && summary.dailyActivities.trim() !== "" 
-            ? summary.dailyActivities 
-            : null,
-          subcontractors: summary.subcontractors ? Object.fromEntries(
-            Object.entries(summary.subcontractors).filter(([_, data]: [string, any]) => 
-              data.employees && data.employees > 0 && data.hours && data.hours > 0
-            )
-          ) : {},
+        const summary = summaryResponse.summary || {};
+
+        // Helpers to normalize new summary arrays into the object-based structure
+        const toCamelKey = (name: string | undefined): string => {
+          if (!name || typeof name !== 'string') return '';
+          const parts = name.trim().replace(/[^a-zA-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+          if (!parts.length) return '';
+          const [first, ...rest] = parts;
+          return first.toLowerCase() + rest.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
         };
-        
+
+        // Labor
+        let laborData: Record<string, any> = {};
+        if (Array.isArray(summary.labor)) {
+          for (const item of summary.labor) {
+            const key = toCamelKey(item?.role);
+            if (!key) continue;
+            laborData[key] = {
+              hours: item?.hours ?? '',
+              rate: '$-',
+              startTime: item?.startTime ?? '',
+              finishTime: item?.finishTime ?? '',
+              total: '$-',
+            };
+          }
+        } else if (summary.laborData) {
+          laborData = { ...summary.laborData };
+        }
+        // Filter labor with hours > 0
+        laborData = Object.fromEntries(
+          Object.entries(laborData).filter(([_, data]: [string, any]) => {
+            const h = (data?.hours ?? '').toString();
+            return h && h !== '0' && h !== '0.00' && h.trim() !== '';
+          })
+        );
+
+        // Subcontractors
+        let subcontractors: Record<string, any> = {};
+        if (Array.isArray(summary.subcontractors)) {
+          for (const sc of summary.subcontractors) {
+            const key = toCamelKey(sc?.name);
+            if (!key) continue;
+            subcontractors[key] = {
+              employees: sc?.numberOfEmployees ?? sc?.employees ?? 0,
+              hours: sc?.hours ?? 0,
+            };
+          }
+        } else if (summary.subcontractors) {
+          subcontractors = { ...summary.subcontractors };
+        }
+        subcontractors = Object.fromEntries(
+          Object.entries(subcontractors).filter(([_, data]: [string, any]) => (Number(data?.employees) > 0) || (Number(data?.hours) > 0))
+        );
+
+        // Materials
+        let materialsDeliveries: Record<string, any> = {};
+        if (Array.isArray(summary.materials)) {
+          for (const m of summary.materials) {
+            const key = toCamelKey(m?.name);
+            if (!key) continue;
+            const qty = m?.quantity;
+            const uom = m?.unitOfMeasure;
+            materialsDeliveries[key] = {
+              qty: qty === undefined || qty === null ? '' : Number(qty).toFixed(2),
+              uom: uom ?? '',
+              unitRate: '$-',
+              tax: '$-',
+              total: '$-',
+            };
+          }
+        } else if (summary.materialsDeliveries) {
+          materialsDeliveries = { ...summary.materialsDeliveries };
+        }
+        materialsDeliveries = Object.fromEntries(
+          Object.entries(materialsDeliveries).filter(([_, data]: [string, any]) => {
+            const q = (data?.qty ?? '').toString();
+            return q && q !== '0' && q !== '0.00' && q.trim() !== '';
+          })
+        );
+
+        // Equipment
+        let equipment: Record<string, any> = {};
+        if (Array.isArray(summary.equipment)) {
+          for (const eq of summary.equipment) {
+            const key = toCamelKey(eq?.name);
+            if (!key) continue;
+            equipment[key] = {
+              days: eq?.daysUsed ?? eq?.days ?? 0,
+              monthlyRate: '$-',
+              itemRate: '$-',
+            };
+          }
+        } else if (summary.equipment) {
+          equipment = { ...summary.equipment };
+        }
+        equipment = Object.fromEntries(
+          Object.entries(equipment).filter(([_, data]: [string, any]) => Number(data?.days) > 0)
+        );
+
+        const filteredSummary = {
+          date: summary?.date || selectedRecord.local_date,
+          jobNumber: selectedSite.site_id,
+          dailyActivities: summary?.dailyActivities && summary.dailyActivities.trim() !== '' ? summary.dailyActivities : null,
+          laborData,
+          subcontractors,
+          materialsDeliveries,
+          equipment,
+        };
+
         setPreviewData(filteredSummary);
       } else {
         // Fallback to basic info from day log
