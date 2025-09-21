@@ -7,13 +7,14 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { customAlert } from '../services/customAlertService';
 
-export interface EditFieldModalProps {
+export interface EditModalProps {
   visible: boolean;
   onClose: () => void;
   onSave: (value: any) => Promise<{ success: boolean; error?: string }>;
@@ -23,7 +24,7 @@ export interface EditFieldModalProps {
   placeholder?: string;
 }
 
-const EditFieldModal: React.FC<EditFieldModalProps> = ({
+const EditModal: React.FC<EditModalProps> = ({
   visible,
   onClose,
   onSave,
@@ -43,10 +44,9 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
   // Focus the text input when modal becomes visible
   useEffect(() => {
     if (visible && textInputRef.current) {
-      // Small delay to ensure the modal is fully rendered
       const timer = setTimeout(() => {
         textInputRef.current?.focus();
-      }, 200);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [visible]);
@@ -54,20 +54,38 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      console.log(`[${new Date().toISOString()}] 📝 EDIT_FIELD - Saving ${fieldType} field:`, fieldLabel, 'Value:', value);
+      console.log(`[${new Date().toISOString()}] 📝 EDIT_MODAL - Saving ${fieldType} field:`, fieldLabel, 'Value:', value);
       
       const result = await onSave(value);
       
       if (result.success) {
-        console.log(`[${new Date().toISOString()}] ✅ EDIT_FIELD - Successfully saved ${fieldLabel}`);
+        console.log(`[${new Date().toISOString()}] ✅ EDIT_MODAL - Successfully saved ${fieldLabel}`);
         onClose();
       } else {
-        console.error(`[${new Date().toISOString()}] ❌ EDIT_FIELD - Failed to save ${fieldLabel}:`, result.error);
-        Alert.alert('Error', result.error || 'Failed to save changes. Please try again.');
+        console.error(`[${new Date().toISOString()}] ❌ EDIT_MODAL - Failed to save ${fieldLabel}:`, result.error);
+        
+        // Check if it's an authentication/authorization error
+        if (result.error?.includes('Invalid credentials') || result.error?.includes('401') || result.error?.includes('unauthorized')) {
+          customAlert.error(
+            'Access Denied',
+            'Edit and delete operations are only available to the owner of the recording or admin users. Please contact your admin if you need to modify this recording.'
+          );
+        } else {
+          customAlert.error('Error', result.error || 'Failed to save changes. Please try again.');
+        }
       }
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] ❌ EDIT_FIELD - Error saving ${fieldLabel}:`, error);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      console.error(`[${new Date().toISOString()}] ❌ EDIT_MODAL - Error saving ${fieldLabel}:`, error);
+      
+      // Check if it's an authentication/authorization error
+      if (error instanceof Error && (error.message.includes('Invalid credentials') || error.message.includes('401') || error.message.includes('unauthorized'))) {
+        customAlert.error(
+          'Access Denied',
+          'Edit and delete operations are only available to the owner of the recording or admin users. Please contact your admin if you need to modify this recording.'
+        );
+      } else {
+        customAlert.error('Error', 'An unexpected error occurred. Please try again.');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -89,7 +107,6 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
             caretHidden={false}
             contextMenuHidden={false}
             onPressIn={() => {
-              // Ensure the input is focused when pressed
               textInputRef.current?.focus();
             }}
           />
@@ -148,8 +165,7 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
       
       case 'labor':
         return (
-          <ScrollView style={styles.laborForm}>
-            {/* New: Role Name field */}
+          <ScrollView style={styles.formScrollView} showsVerticalScrollIndicator={false}>
             <View style={styles.formField}>
               <Text style={styles.fieldLabel}>Role Name</Text>
               <TextInput
@@ -227,7 +243,7 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
       
       case 'material':
         return (
-          <ScrollView style={styles.materialForm}>
+          <ScrollView style={styles.formScrollView} showsVerticalScrollIndicator={false}>
             <View style={styles.formRow}>
               <View style={styles.formField}>
                 <Text style={styles.fieldLabel}>Quantity</Text>
@@ -237,6 +253,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                   onChangeText={(text) => setValue({...value, qty: text})}
                   placeholder="10"
                   keyboardType="numeric"
+                  caretHidden={false}
+                  contextMenuHidden={false}
                 />
               </View>
               <View style={styles.formField}>
@@ -246,6 +264,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                   value={value?.uom || ''}
                   onChangeText={(text) => setValue({...value, uom: text})}
                   placeholder="kg"
+                  caretHidden={false}
+                  contextMenuHidden={false}
                 />
               </View>
             </View>
@@ -257,6 +277,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                   value={value?.unitRate || ''}
                   onChangeText={(text) => setValue({...value, unitRate: text})}
                   placeholder="$50.00"
+                  caretHidden={false}
+                  contextMenuHidden={false}
                 />
               </View>
               <View style={styles.formField}>
@@ -266,6 +288,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                   value={value?.tax || ''}
                   onChangeText={(text) => setValue({...value, tax: text})}
                   placeholder="$5.00"
+                  caretHidden={false}
+                  contextMenuHidden={false}
                 />
               </View>
             </View>
@@ -276,6 +300,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                 value={value?.total || ''}
                 onChangeText={(text) => setValue({...value, total: text})}
                 placeholder="$505.00"
+                caretHidden={false}
+                contextMenuHidden={false}
               />
             </View>
           </ScrollView>
@@ -283,7 +309,7 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
       
       case 'equipment':
         return (
-          <ScrollView style={styles.equipmentForm}>
+          <ScrollView style={styles.formScrollView} showsVerticalScrollIndicator={false}>
             <View style={styles.formField}>
               <Text style={styles.fieldLabel}>Days</Text>
               <TextInput
@@ -292,6 +318,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                 onChangeText={(text) => setValue({...value, days: parseInt(text) || 0})}
                 placeholder="1"
                 keyboardType="numeric"
+                caretHidden={false}
+                contextMenuHidden={false}
               />
             </View>
             <View style={styles.formField}>
@@ -301,6 +329,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                 value={value?.monthlyRate || ''}
                 onChangeText={(text) => setValue({...value, monthlyRate: text})}
                 placeholder="$1000.00"
+                caretHidden={false}
+                contextMenuHidden={false}
               />
             </View>
             <View style={styles.formField}>
@@ -310,6 +340,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                 value={value?.itemRate || ''}
                 onChangeText={(text) => setValue({...value, itemRate: text})}
                 placeholder="$50.00"
+                caretHidden={false}
+                contextMenuHidden={false}
               />
             </View>
           </ScrollView>
@@ -317,7 +349,7 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
       
       case 'subcontractor':
         return (
-          <ScrollView style={styles.subcontractorForm}>
+          <ScrollView style={styles.formScrollView} showsVerticalScrollIndicator={false}>
             <View style={styles.formField}>
               <Text style={styles.fieldLabel}>Employees</Text>
               <TextInput
@@ -326,6 +358,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                 onChangeText={(text) => setValue({...value, employees: parseInt(text) || 0})}
                 placeholder="5"
                 keyboardType="numeric"
+                caretHidden={false}
+                contextMenuHidden={false}
               />
             </View>
             <View style={styles.formField}>
@@ -336,6 +370,8 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
                 onChangeText={(text) => setValue({...value, hours: parseFloat(text) || 0})}
                 placeholder="8.0"
                 keyboardType="numeric"
+                caretHidden={false}
+                contextMenuHidden={false}
               />
             </View>
           </ScrollView>
@@ -359,128 +395,68 @@ const EditFieldModal: React.FC<EditFieldModalProps> = ({
     }
   };
 
-  if (!visible) return null;
-
   return (
-    <View style={styles.absoluteModalOverlay}>
-      <TouchableOpacity 
-        style={styles.modalBackdrop} 
-        onPress={onClose}
-        activeOpacity={1}
-      />
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.modalOverlay}
+        style={styles.container}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.modalTitle}>Edit {fieldLabel}</Text>
-            </View>
-            <View style={styles.headerRight}>
-              <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={handleSave} 
-                style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark" size={18} color="#fff" />
-                    <Text style={styles.saveButtonText}>Save</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          <View style={styles.scrollViewWrapper}>
-            <ScrollView 
-              style={styles.modalContent}
-              contentContainerStyle={styles.modalContentContainer}
-              showsVerticalScrollIndicator={true}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled={true}
-              bounces={true}
-              scrollEnabled={true}
-              alwaysBounceVertical={true}
-              scrollEventThrottle={16}
-            >
-              {renderInputField()}
-            </ScrollView>
-          </View>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Edit {fieldLabel}</Text>
+          <TouchableOpacity 
+            onPress={handleSave} 
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.content}>
+          {renderInputField()}
         </View>
       </KeyboardAvoidingView>
-    </View>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  absoluteModalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 10001,
-  },
-  modalOverlay: {
+  container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    zIndex: 10000,
-  },
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  modalContainer: {
-    width: '90%',
-    maxHeight: '80%',
+
     backgroundColor: '#fff',
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 20,
-    zIndex: 10002,
   },
-  modalHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    marginTop: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
+    backgroundColor: '#F8F9FA',
   },
-  headerLeft: {
-    flex: 1,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  modalTitle: {
+  title: {
     fontSize: 18,
     fontWeight: '700',
     color: '#000',
+    flex: 1,
+    textAlign: 'center',
   },
   cancelButton: {
     paddingVertical: 8,
@@ -494,9 +470,6 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
@@ -510,44 +483,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  scrollViewWrapper: {
-    flex: 1,
-    zIndex: 10003,
-  },
-  modalContent: {
+  content: {
     flex: 1,
     padding: 20,
-    maxHeight: 400,
   },
-  modalContentContainer: {
-    flexGrow: 1,
-    paddingBottom: 20,
-    minHeight: 200,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#000',
-    backgroundColor: '#F8F9FA',
-  },
-  multilineInput: {
-    height: 120,
-    textAlignVertical: 'top',
-  },
-  laborForm: {
-    flex: 1,
-  },
-  materialForm: {
-    flex: 1,
-  },
-  equipmentForm: {
-    flex: 1,
-  },
-  subcontractorForm: {
+  formScrollView: {
     flex: 1,
   },
   formRow: {
@@ -565,6 +505,20 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 6,
   },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#000',
+    backgroundColor: '#F8F9FA',
+  },
+  multilineInput: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
 });
 
-export default EditFieldModal;
+export default EditModal;

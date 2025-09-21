@@ -26,15 +26,15 @@ export interface ImageData {
 }
 
 export const imageService = {
-  // Find the current day recording for a job number (today's recording)
-  async getCurrentDayRecordingId(job_id: string, token?: string): Promise<string | null> {
+  // Find the day recording for a specific date (or today if no date provided)
+  async getCurrentDayRecordingId(job_id: string, token?: string, targetDate?: Date): Promise<string | null> {
     try {
       if (!token) {
         console.warn('📸 No token provided for getCurrentDayRecordingId');
         return null;
       }
 
-      console.log('📸 Fetching current day recording for job_id:', job_id);
+      console.log('📸 Fetching day recording for job_id:', job_id);
 
       const response = await fetch(`${API_CONFIG.BASE_URL}/recording/day-logs?job_id=${encodeURIComponent(job_id)}`, {
         method: 'GET',
@@ -51,24 +51,26 @@ export const imageService = {
         return null;
       }
 
-      // Find today's recording for this job_id
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+      // Use target date or today
+      const searchDate = targetDate || new Date();
+      const searchDateStr = searchDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+      console.log('📸 Searching for day recording on date:', searchDateStr);
       
       const dayLogs = result.day_logs || [];
-      const todaysRecording = dayLogs.find((log: any) => {
-        return log.local_date === todayStr;
+      const targetRecording = dayLogs.find((log: any) => {
+        console.log('📸 Checking day log:', log.local_date, 'vs target:', searchDateStr);
+        return log.local_date === searchDateStr;
       });
 
-      if (todaysRecording?.id) {
-        console.log('📸 Found current day recording ID:', todaysRecording.id);
-        return todaysRecording.id;
+      if (targetRecording?.id) {
+        console.log('📸 Found day recording ID for date:', searchDateStr, '-> ID:', targetRecording.id);
+        return targetRecording.id;
       } else {
-        console.log('📸 No current day recording found for job_id:', job_id);
+        console.log('📸 No day recording found for job_id:', job_id, 'on date:', searchDateStr);
         return null;
       }
     } catch (error) {
-      console.error('📸 Failed to get current day recording ID:', error);
+      console.error('📸 Failed to get day recording ID:', error);
       return null;
     }
   },
@@ -79,7 +81,8 @@ export const imageService = {
     job_id: string,
     metadata?: any,
     token?: string,
-    day_id?: string
+    day_id?: string,
+    selectedDate?: Date
   ): Promise<ImageUploadResponse> {
     try {
       if (!token) {
@@ -115,10 +118,14 @@ export const imageService = {
         formData.append('metadata', JSON.stringify(metadata));
       }
 
+      // Note: selected date is stored in metadata instead of as separate field
+      // since backend doesn't support selected_date parameter
+
       console.log('📸 Uploading image for job_id:', job_id);
       console.log('📸 Day ID:', day_id);
       console.log('📸 Image URI:', imageUri);
       console.log('📸 Metadata:', metadata);
+      console.log('📸 Selected Date:', selectedDate?.toISOString().split('T')[0]);
       console.log('📸 API Base URL:', API_CONFIG.BASE_URL);
       console.log('📸 Full URL:', `${API_CONFIG.BASE_URL}/images/upload`);
 

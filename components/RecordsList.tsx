@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -19,7 +18,78 @@ import { recordingService } from '../services/recordingService';
 import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
 import { Ionicons } from '@expo/vector-icons';
+import { customAlert } from '../services/customAlertService';
 
+
+// Format date function for use in components
+const formatDate = (dateString: string | null | undefined) => {
+  try {
+    // Handle null, undefined, or empty strings
+    if (!dateString || dateString === 'undefined' || dateString === 'null') {
+      return 'No Date';
+    }
+
+    // Clean the date string - remove any extra spaces or invalid characters
+    const cleanDateString = dateString.toString().trim();
+    
+    // Try to create a date object
+    let date = new Date(cleanDateString);
+    
+    // If the date is invalid, try parsing common formats
+    if (isNaN(date.getTime())) {
+      // Try parsing MM/DD/YYYY format
+      const mmddyyyy = cleanDateString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (mmddyyyy) {
+        const [, month, day, year] = mmddyyyy;
+        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      }
+      
+      // Try parsing YYYY-MM-DD format
+      if (isNaN(date.getTime())) {
+        const yyyymmdd = cleanDateString.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (yyyymmdd) {
+          const [, year, month, day] = yyyymmdd;
+          date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        }
+      }
+      
+      // Try parsing DD/MM/YYYY format
+      if (isNaN(date.getTime())) {
+        const ddmmyyyy = cleanDateString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (ddmmyyyy) {
+          const [, day, month, year] = ddmmyyyy;
+          date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        }
+      }
+    }
+    
+    // Final check if date is still invalid
+    if (isNaN(date.getTime())) {
+      console.warn('Unable to parse date:', dateString);
+      return 'Invalid Date';
+    }
+    
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'
+    ];
+    
+    const month = monthNames[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    
+    // Validate the extracted values
+    if (!month || isNaN(day) || isNaN(year)) {
+      console.warn('Invalid date components:', { month, day, year, original: dateString });
+      return 'Invalid Date';
+    }
+    
+    return `${month} ${day}, ${year}`;
+  } catch (error) {
+    console.error('Error formatting date:', error, 'Original:', dateString);
+    return 'Error parsing date';
+  }
+};
 
 // Separate component for record item to avoid hook violations
 const RecordItem: React.FC<{
@@ -29,7 +99,8 @@ const RecordItem: React.FC<{
   getTypeIcon: (type: string) => string;
   getTypeColor: (type: string) => string;
   onDeleteRecord?: (recordId: string) => Promise<{ success: boolean; error?: string }>;
-}> = ({ item, index, onRecordClick, getTypeIcon, getTypeColor, onDeleteRecord }) => {
+  user?: { role: string } | null;
+}> = ({ item, index, onRecordClick, getTypeIcon, getTypeColor, onDeleteRecord, user }) => {
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: withTiming(1, { duration: 300 + index * 50 }),
     transform: [
@@ -66,39 +137,51 @@ const RecordItem: React.FC<{
   const handleDelete = () => {
     if (!onDeleteRecord) return;
 
-    Alert.alert(
+    customAlert.confirm(
       'Delete Recording',
       `Are you sure you want to delete "${item.title}"? This action cannot be undone.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log(`[${new Date().toISOString()}] 🗑️ DELETE_RECORD - Starting deletion for record ${item.id}`);
-              setIsDeleting(true);
-              const result = await onDeleteRecord(item.id);
-              
-              if (result.success) {
-                console.log(`[${new Date().toISOString()}] ✅ DELETE_RECORD - Successfully deleted record ${item.id}`);
-                // No need to do anything here - the parent component will handle state updates
-              } else {
-                console.error(`[${new Date().toISOString()}] ❌ DELETE_RECORD - Failed to delete record ${item.id}:`, result.error);
-                Alert.alert('Error', result.error || 'Failed to delete recording. Please try again.');
-              }
-            } catch (error) {
-              console.error(`[${new Date().toISOString()}] ❌ DELETE_RECORD - Error deleting record ${item.id}:`, error);
-              Alert.alert('Error', 'An unexpected error occurred. Please try again.');
-            } finally {
-              setIsDeleting(false);
+      async () => {
+        try {
+          console.log(`[${new Date().toISOString()}] 🗑️ DELETE_RECORD - Starting deletion for record ${item.id}`);
+          setIsDeleting(true);
+          const result = await onDeleteRecord(item.id);
+          
+          if (result.success) {
+            console.log(`[${new Date().toISOString()}] ✅ DELETE_RECORD - Successfully deleted record ${item.id}`);
+            customAlert.success('Success', 'Recording deleted successfully');
+            // No need to do anything here - the parent component will handle state updates
+          } else {
+            console.error(`[${new Date().toISOString()}] ❌ DELETE_RECORD - Failed to delete record ${item.id}:`, result.error);
+            
+            // Check if it's an authentication/authorization error
+            if (result.error?.includes('Invalid credentials') || result.error?.includes('401') || result.error?.includes('unauthorized')) {
+              customAlert.error(
+                'Access Denied',
+                'Delete operations are only available to the owner of the recording or admin users. Please contact your admin if you need to delete this recording.'
+              );
+            } else {
+              customAlert.error('Error', result.error || 'Failed to delete recording. Please try again.');
             }
           }
+        } catch (error) {
+          console.error(`[${new Date().toISOString()}] ❌ DELETE_RECORD - Error deleting record ${item.id}:`, error);
+          
+          // Check if it's an authentication/authorization error
+          if (error instanceof Error && (error.message.includes('Invalid credentials') || error.message.includes('401') || error.message.includes('unauthorized'))) {
+            customAlert.error(
+              'Access Denied',
+              'Delete operations are only available to the owner of the recording or admin users. Please contact your admin if you need to delete this recording.'
+            );
+          } else {
+            customAlert.error('Error', 'An unexpected error occurred. Please try again.');
+          }
+        } finally {
+          setIsDeleting(false);
         }
-      ]
+      },
+      undefined, // onCancel
+      'Delete',
+      'Cancel'
     );
   };
 
@@ -115,12 +198,16 @@ const RecordItem: React.FC<{
             <View style={[styles.typeIconGlow, { backgroundColor: getTypeColor(item.type) + '08' }]} />
           </View>
           <View style={styles.recordInfo}>
-            <Text style={styles.recordTitle} numberOfLines={2}>{item.title}</Text>
+            <Text style={styles.recordTitle} numberOfLines={2}>
+              {item.formattedDate || formatDate(item.date) || formatDate(item.created_at) || formatDate(item.timestamp) || 'No Date Available'}
+            </Text>
             <View style={styles.recordMetaRow}>
-              <View style={styles.jobBadge}>
-                <Text style={styles.recordJobNumber}>Job: {item.jobNumber}</Text>
-              </View>
-              <Text style={styles.recordDate}>{item.date}</Text>
+              {item.jobNumber && (
+                <View style={styles.jobBadge}>
+                  <Text style={styles.recordJobNumber}>Job: {item.jobNumber}</Text>
+                </View>
+              )}
+              <Text style={styles.recordDate}>{item.type || 'Recording'}</Text>
             </View>
           </View>
         </View>
@@ -129,7 +216,7 @@ const RecordItem: React.FC<{
             <View style={styles.durationContainer}>
               <Text style={styles.recordDuration}>{item.duration}</Text>
             </View>
-            {onDeleteRecord && (
+            {onDeleteRecord && (user?.role === 'admin' || user?.role === 'user') && (
               <TouchableOpacity 
                 onPress={handleDelete}
                 style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
@@ -200,6 +287,7 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
   isLoading: propIsLoading 
 }) => {
   const { selectedSite } = useSite();
+  const { user } = useAuth();
   
   console.log(`[${new Date().toISOString()}] 📂 MODAL_RENDER - ${records?.length || 0} records for site ${selectedSite?.site_id}`);
   
@@ -237,6 +325,99 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
   // Ensure records is an array
   const safeRecords = Array.isArray(records) ? records : [];
 
+  // Format date function is now defined at the top level
+
+  // Sort records by date (latest first)
+  const sortRecordsByDate = (records: any[]) => {
+    return [...records].sort((a, b) => {
+      try {
+        // Get date strings from various possible fields
+        const dateStringA = a.date || a.created_at || a.timestamp;
+        const dateStringB = b.date || b.created_at || b.timestamp;
+        
+        // Handle undefined/null dates by putting them at the end
+        if (!dateStringA && !dateStringB) return 0;
+        if (!dateStringA) return 1;
+        if (!dateStringB) return -1;
+        
+        // Parse dates more robustly
+        let dateA = new Date(dateStringA);
+        let dateB = new Date(dateStringB);
+        
+        // If direct parsing fails, try to handle different formats
+        if (isNaN(dateA.getTime())) {
+          // Try MM/DD/YYYY format
+          const mmddyyyy = dateStringA.toString().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (mmddyyyy) {
+            const [, month, day, year] = mmddyyyy;
+            dateA = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+        }
+        
+        if (isNaN(dateB.getTime())) {
+          // Try MM/DD/YYYY format
+          const mmddyyyy = dateStringB.toString().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (mmddyyyy) {
+            const [, month, day, year] = mmddyyyy;
+            dateB = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+        }
+        
+        // If dates are still invalid, put them at the end
+        if (isNaN(dateA.getTime()) && isNaN(dateB.getTime())) return 0;
+        if (isNaN(dateA.getTime())) return 1;
+        if (isNaN(dateB.getTime())) return -1;
+        
+        // Sort latest first (descending order)
+        const result = dateB.getTime() - dateA.getTime();
+        
+        // Debug logging
+        console.log('Sorting comparison:', {
+          a: { date: dateStringA, parsed: dateA.toISOString() },
+          b: { date: dateStringB, parsed: dateB.toISOString() },
+          result: result > 0 ? 'B is newer' : result < 0 ? 'A is newer' : 'Same'
+        });
+        
+        return result;
+      } catch (error) {
+        console.error('Error sorting records:', error);
+        return 0;
+      }
+    });
+  };
+
+  // Process records: sort and format dates
+  const sortedRecords = sortRecordsByDate(safeRecords);
+  const processedRecords = sortedRecords.map((record, index) => {
+    // Try to get a valid date from any available field
+    const rawDate = record.date || record.created_at || record.timestamp;
+    const formattedDate = formatDate(rawDate);
+    
+    // Debug log to see what we're working with
+    console.log(`Record ${index + 1} (after sorting):`, {
+      id: record.id,
+      title: record.title,
+      rawDate,
+      formattedDate,
+      type: typeof rawDate,
+      position: `${index + 1} of ${sortedRecords.length}`
+    });
+    
+    return {
+      ...record,
+      formattedDate: formattedDate !== 'No Date' && formattedDate !== 'Invalid Date' && formattedDate !== 'Error parsing date' 
+        ? formattedDate 
+        : undefined
+    };
+  });
+  
+  // Log final order
+  console.log('Final record order (latest first):', processedRecords.map(r => ({
+    title: r.title,
+    date: r.date || r.created_at || r.timestamp,
+    formatted: r.formattedDate
+  })));
+
   // Use loading state from props, but prioritize showing data if available
   const isLoading = propIsLoading && safeRecords.length === 0;
 
@@ -257,8 +438,8 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
             <Text style={styles.recordsSubtitle}>
               {isLoading ? 'Loading recordings...' : 
                selectedSite?.site_id ? 
-                 `${safeRecords.length} recordings for site ${selectedSite.site_id}` :
-                 `${safeRecords.length} recordings available`}
+                 `${processedRecords.length} recordings for site ${selectedSite.site_id}` :
+                 `${processedRecords.length} recordings available`}
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -275,7 +456,7 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
           </View>
         ) : (
           <FlatList
-            data={safeRecords}
+            data={processedRecords}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.recordsListContent}
@@ -287,6 +468,7 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
                 getTypeIcon={getTypeIcon}
                 getTypeColor={getTypeColor}
                 onDeleteRecord={onDeleteRecord}
+                user={user}
               />
             )}
             ListEmptyComponent={() => (

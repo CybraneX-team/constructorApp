@@ -1,6 +1,8 @@
 import { AudioRecorder } from 'expo-audio';
 import { config } from '../config/app.config';
 import { apiMonitor } from './apiMonitor';
+import axiosInstance from '../utils/axiosConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface RecordingUploadData {
   title: string;
@@ -25,6 +27,36 @@ class RecordingService {
     console.log('🔧 RecordingService initialized with URL:', this.baseUrl);
     console.log('🔧 Config backend baseUrl:', config.backend.baseUrl);
     console.log('🔧 Environment variable EXPO_PUBLIC_BACKEND_URL:', process.env.EXPO_PUBLIC_BACKEND_URL);
+  }
+
+  /**
+   * Validate and refresh token if needed
+   */
+  private async validateToken(token: string): Promise<string> {
+    try {
+      // Check if token is expired by decoding the JWT
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Math.floor(Date.now() / 1000);
+      
+      if (payload.exp && payload.exp < currentTime) {
+        console.log(`[${new Date().toISOString()}] 🔑 TOKEN_EXPIRED - Token expired, attempting to get fresh token`);
+        
+        // Try to get a fresh token from AsyncStorage
+        const freshToken = await AsyncStorage.getItem('authToken');
+        if (freshToken && freshToken !== token) {
+          console.log(`[${new Date().toISOString()}] 🔑 TOKEN_REFRESHED - Using fresh token from storage`);
+          return freshToken;
+        }
+        
+        console.log(`[${new Date().toISOString()}] 🔑 TOKEN_INVALID - No fresh token available`);
+        return token; // Return original token, let the API call fail
+      }
+      
+      return token;
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] 🔑 TOKEN_VALIDATION_ERROR:`, error);
+      return token; // Return original token if validation fails
+    }
   }
 
   /**
@@ -233,6 +265,7 @@ class RecordingService {
       type: string;
       transcription?: string;
       durationOverrideMs?: number;
+      selectedDate?: Date; // Optional custom date from date picker
     },
     token?: string
   ): Promise<UploadResponse> {
@@ -259,7 +292,7 @@ class RecordingService {
       const uploadData: RecordingUploadData = {
         title: metadata.title,
         duration: this.formatDuration(duration || 0),
-        local_date: this.formatLocalDate(new Date()),
+        local_date: this.formatLocalDate(metadata.selectedDate || new Date()),
         job_id: job_id,
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
@@ -744,6 +777,11 @@ class RecordingService {
     try {
       apiMonitor.startCall(apiUrl, 'PUT');
       console.log(`[${new Date().toISOString()}] 📝 UPDATE_START - ${recordingId} - ${fieldPath}`);
+      console.log(`[${new Date().toISOString()}] 🔑 TOKEN_CHECK - Token provided: ${token ? 'YES' : 'NO'}, Length: ${token?.length || 0}`);
+      
+      // Validate and potentially refresh the token
+      const validatedToken = await this.validateToken(token);
+      console.log(`[${new Date().toISOString()}] 🔑 TOKEN_VALIDATED - Using token: ${validatedToken ? 'YES' : 'NO'}`);
       
       // Helper function to set a nested field value using dot notation
       function setNestedValue(obj: any, path: string, value: any) {
@@ -765,10 +803,11 @@ class RecordingService {
       const updatedSummary = JSON.parse(JSON.stringify(currentSummary)); // Deep copy
       setNestedValue(updatedSummary, fieldPath, value);
       
+      // Use fetch with validated token
       const response = await fetch(apiUrl, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${validatedToken}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
@@ -779,9 +818,22 @@ class RecordingService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Update failed response:', errorText);
-        apiMonitor.endCall(apiUrl, 'PUT', false, `${response.status} ${errorText}`);
-        throw new Error(`Update failed: ${response.status} ${errorText}`);
+        console.error(`[${new Date().toISOString()}] ❌ UPDATE_FAILED - ${recordingId} - ${response.status}: ${errorText}`);
+        apiMonitor.endCall(apiUrl, 'PUT', false, response.status);
+        
+        // Check if it's an authentication error
+        if (response.status === 401) {
+          console.log(`[${new Date().toISOString()}] 🔑 AUTH_ERROR - Token is invalid, user needs to re-login`);
+          return {
+            success: false,
+            error: 'Invalid credentials',
+          };
+        }
+        
+        return {
+          success: false,
+          error: `HTTP error! status: ${response.status} - ${errorText}`,
+        };
       }
 
       const result = await response.json();
@@ -794,11 +846,20 @@ class RecordingService {
         message: result.message || 'Field updated successfully',
       };
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update field';
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to update field';
+      const statusCode = error?.response?.status || 0;
       console.log(`[${new Date().toISOString()}] ❌ UPDATE_ERROR - ${recordingId} - ${fieldPath} - ${errorMessage}`);
       
       apiMonitor.endCall(apiUrl, 'PUT', false, errorMessage);
+      
+      // Check for authentication errors
+      if (statusCode === 401) {
+        return {
+          success: false,
+          error: 'Invalid credentials',
+        };
+      }
       
       return {
         success: false,

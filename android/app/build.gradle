@@ -121,6 +121,29 @@ android {
         jniLibs {
             useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
         }
+        pickFirst '**/META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
+        pickFirst '**/META-INF/androidx.core_core.version'
+        pickFirst '**/META-INF/androidx.versionedparcelable_versionedparcelable.version'
+        pickFirst '**/META-INF/androidx.annotation_annotation.version'
+        pickFirst '**/META-INF/androidx.customview_customview.version'
+        pickFirst '**/META-INF/androidx.fragment_fragment.version'
+        pickFirst '**/META-INF/androidx.media_media.version'
+        pickFirst '**/META-INF/androidx.lifecycle_lifecycle.version'
+        pickFirst '**/META-INF/androidx.arch.core_core.version'
+        pickFirst '**/META-INF/androidx.collection_collection.version'
+        pickFirst '**/META-INF/androidx.concurrent_concurrent.version'
+        pickFirst '**/META-INF/androidx.cursoradapter_cursoradapter.version'
+        pickFirst '**/META-INF/androidx.documentfile_documentfile.version'
+        pickFirst '**/META-INF/androidx.interpolator_interpolator.version'
+        pickFirst '**/META-INF/androidx.loader_loader.version'
+        pickFirst '**/META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
+        pickFirst '**/META-INF/androidx.print_print.version'
+        pickFirst '**/META-INF/androidx.slidingpanelayout_slidingpanelayout.version'
+        pickFirst '**/META-INF/androidx.swiperefreshlayout_swiperefreshlayout.version'
+        pickFirst '**/META-INF/androidx.transition_transition.version'
+        pickFirst '**/META-INF/androidx.vectordrawable_vectordrawable.version'
+        pickFirst '**/META-INF/androidx.appcompat_appcompat.version'
+        pickFirst '**/META-INF/androidx.viewpager_viewpager.version'
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -147,12 +170,27 @@ android {
     }
 }
 
+configurations.all {
+    exclude group: 'com.android.support', module: 'support-compat'
+    exclude group: 'com.android.support', module: 'support-annotations'
+    exclude group: 'com.android.support', module: 'support-v4'
+    exclude group: 'com.android.support', module: 'support-vector-drawable'
+    exclude group: 'com.android.support', module: 'animated-vector-drawable'
+    exclude group: 'com.android.support', module: 'versionedparcelable'
+    exclude group: 'com.android.support', module: 'localbroadcastmanager'
+    exclude group: 'com.android.support', module: 'customview'
+    exclude group: 'com.android.support', module: 'support-core-utils'
+    exclude group: 'com.android.support', module: 'support-core-ui'
+    exclude group: 'com.android.support', module: 'support-fragment'
+    exclude group: 'com.android.support', module: 'support-media-compat'
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
-    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
+    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";          
+    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";        
     def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
 
     if (isGifEnabled) {

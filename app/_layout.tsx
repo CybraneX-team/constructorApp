@@ -10,6 +10,7 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { SiteProvider } from '../contexts/SiteContext';
 import { ModalStackProvider } from '../contexts/ModalStackContext';
 import GlobalAlertProvider from '../components/GlobalAlertProvider';
+import NetworkConnectivityCheck from '../components/NetworkConnectivityCheck';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -28,6 +29,7 @@ export default function RootLayout() {
         <ModalStackProvider>
           <GlobalAlertProvider>
             <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <NetworkConnectivityCheck />
             <Stack>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="main" options={{ headerShown: false }} />

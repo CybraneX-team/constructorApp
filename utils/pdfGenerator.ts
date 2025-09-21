@@ -245,7 +245,7 @@ function buildDailyWorkSummaryHtml(record: RecordDetail, includeRates: boolean =
           ${renderSubcontractorTable(record)}
 
           <div class="section-header">Daily Activities</div>
-          <div class="activities">${escapeHtml(record.dailyActivities || '')}</div>
+          <div class="activities">${escapeHtml(record.dailyActivities || 'No activities recorded')}</div>
 
           <div class="section-header">Materials Deliveries</div>
           ${renderMaterialsTable(record, includeRates)}
@@ -258,9 +258,9 @@ function buildDailyWorkSummaryHtml(record: RecordDetail, includeRates: boolean =
             <div class="images-grid">
               ${record.images.map((image, index) => `
                 <div class="image-container">
-                  <img src="${image.presignedUrl}" alt="Site Photo ${index + 1}" class="site-image" />
+                  <img src="${image.url || image.presignedUrl || ''}" alt="Site Photo ${index + 1}" class="site-image" />
                   <div class="image-caption">
-                    ${image.originalName || `Photo ${index + 1}`}
+                    ${image.original_name || image.originalName || `Photo ${index + 1}`}
                     ${image.customMetadata?.caption ? ` - ${escapeHtml(image.customMetadata.caption)}` : ''}
                   </div>
                 </div>
@@ -285,24 +285,28 @@ function escapeHtml(text: string): string {
 // LABOR TABLE
 function renderLaborTable(record: RecordDetail, includeRates: boolean = true): string {
   const rows: Array<{ title: string; data: any }> = [
-    { title: 'Manager', data: record.laborData.manager },
-    { title: 'Foreman', data: record.laborData.foreman },
-    { title: 'Carpenter', data: record.laborData.carpenter },
-    { title: 'Skill Laborer', data: record.laborData.skillLaborer },
-    { title: 'Carpenter', data: record.laborData.carpenterExtra },
+    { title: 'Manager', data: record.laborData?.manager },
+    { title: 'Foreman', data: record.laborData?.foreman },
+    { title: 'Carpenter', data: record.laborData?.carpenter },
+    { title: 'Skill Laborer', data: record.laborData?.skillLaborer },
+    { title: 'Carpenter Extra', data: record.laborData?.carpenterExtra },
   ];
 
   const body = rows
-    .map(({ title, data }) => `
-      <tr>
-        <td>${escapeHtml(title)}</td>
-        <td class="num">${escapeHtml(data.startTime || '')}</td>
-        <td class="num">${escapeHtml(data.finishTime || '')}</td>
-        <td class="num">${escapeHtml(data.hours ?? '')}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.rate ?? '') : '-')}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.total ?? '') : '-')}</td>
-      </tr>
-    `)
+    .map(({ title, data }) => {
+      // Add null/undefined checks for data object
+      const safeData = data || {};
+      return `
+        <tr>
+          <td>${escapeHtml(title)}</td>
+          <td class="num">${escapeHtml(safeData.startTime || '')}</td>
+          <td class="num">${escapeHtml(safeData.finishTime || '')}</td>
+          <td class="num">${escapeHtml(safeData.hours ?? '')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.rate ?? '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.total ?? '') : '-')}</td>
+        </tr>
+      `;
+    })
     .join('');
 
   return `
@@ -321,7 +325,7 @@ function renderLaborTable(record: RecordDetail, includeRates: boolean = true): s
         ${body}
         <tr class="totals-row">
           <td colspan="5">Total</td>
-          <td class="num">${includeRates ? computeColumnTotal(rows.map(r => r.data.total)) : '-'}</td>
+          <td class="num">${includeRates ? computeColumnTotal(rows.map(r => r.data?.total || '')) : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -330,6 +334,7 @@ function renderLaborTable(record: RecordDetail, includeRates: boolean = true): s
 
 // SUBCONTRACTORS TABLE
 function renderSubcontractorTable(record: RecordDetail): string {
+  const subcontractor = record.subcontractors?.superiorTeamRebar || {};
   return `
     <table class="mb-16">
       <thead>
@@ -342,8 +347,8 @@ function renderSubcontractorTable(record: RecordDetail): string {
       <tbody>
         <tr>
           <td>Superior Team Rebar</td>
-          <td class="num">${escapeHtml(String(record.subcontractors.superiorTeamRebar.employees))}</td>
-          <td class="num">${escapeHtml(String(record.subcontractors.superiorTeamRebar.hours))}</td>
+          <td class="num">${escapeHtml(String(subcontractor.employees || 0))}</td>
+          <td class="num">${escapeHtml(String(subcontractor.hours || 0))}</td>
         </tr>
       </tbody>
     </table>
@@ -353,21 +358,24 @@ function renderSubcontractorTable(record: RecordDetail): string {
 // MATERIALS TABLE
 function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true): string {
   const items = [
-    { name: 'Argos Class 4 4500 PSI concrete', data: record.materialsDeliveries.argosClass4 },
-    { name: 'Expansion Joint material', data: record.materialsDeliveries.expansionJoint },
+    { name: 'Argos Class 4 4500 PSI concrete', data: record.materialsDeliveries?.argosClass4 },
+    { name: 'Expansion Joint material', data: record.materialsDeliveries?.expansionJoint },
   ];
 
   const body = items
-    .map(({ name, data }) => `
-      <tr>
-        <td>${escapeHtml(name)}</td>
-        <td class="num">${escapeHtml(data.qty || '')}</td>
-        <td>${escapeHtml(data.uom || '')}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.unitRate ?? '') : '-')}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.tax ?? '') : '-')}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.total ?? '') : '-')}</td>
-      </tr>
-    `)
+    .map(({ name, data }) => {
+      const safeData = data || {};
+      return `
+        <tr>
+          <td>${escapeHtml(name)}</td>
+          <td class="num">${escapeHtml(safeData.qty || '')}</td>
+          <td>${escapeHtml(safeData.uom || '')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.unitRate ?? '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.tax ?? '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.total ?? '') : '-')}</td>
+        </tr>
+      `;
+    })
     .join('');
 
   return `
@@ -386,7 +394,7 @@ function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true
         ${body}
         <tr class="totals-row">
           <td colspan="5">Totals</td>
-          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data.total)) : '-'}</td>
+          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data?.total || '')) : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -396,23 +404,26 @@ function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true
 // EQUIPMENT TABLE
 function renderEquipmentTable(record: RecordDetail, includeRates: boolean = true): string {
   const items = [
-    { name: 'Truck', data: record.equipment.truck },
-    { name: '14k EQUIPMENT TRAILER', data: record.equipment.equipmentTrailer },
-    { name: 'Fuel', data: record.equipment.fuel },
-    { name: 'Mini Excavator with Basket', data: record.equipment.miniExcavator },
-    { name: '12 ft closed tool trailer', data: record.equipment.closedToolTrailer },
-    { name: 'Skid Stir', data: record.equipment.skidStir },
+    { name: 'Truck', data: record.equipment?.truck },
+    { name: '14k EQUIPMENT TRAILER', data: record.equipment?.equipmentTrailer },
+    { name: 'Fuel', data: record.equipment?.fuel },
+    { name: 'Mini Excavator with Basket', data: record.equipment?.miniExcavator },
+    { name: '12 ft closed tool trailer', data: record.equipment?.closedToolTrailer },
+    { name: 'Skid Stir', data: record.equipment?.skidStir },
   ];
 
   const body = items
-    .map(({ name, data }) => `
-      <tr>
-        <td>${escapeHtml(name)}</td>
-        <td class="num">${escapeHtml(String(data.days ?? ''))}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.monthlyRate ?? '') : '-')}</td>
-        <td class="num">${escapeHtml(includeRates ? (data.itemRate ?? '') : '-')}</td>
-      </tr>
-    `)
+    .map(({ name, data }) => {
+      const safeData = data || {};
+      return `
+        <tr>
+          <td>${escapeHtml(name)}</td>
+          <td class="num">${escapeHtml(String(safeData.days ?? ''))}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.monthlyRate ?? '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safeData.itemRate ?? '') : '-')}</td>
+        </tr>
+      `;
+    })
     .join('');
 
   return `
@@ -429,7 +440,7 @@ function renderEquipmentTable(record: RecordDetail, includeRates: boolean = true
         ${body}
         <tr class="totals-row">
           <td colspan="3">Totals</td>
-          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data.itemRate)) : '-'}</td>
+          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data?.itemRate || '')) : '-'}</td>
         </tr>
       </tbody>
     </table>

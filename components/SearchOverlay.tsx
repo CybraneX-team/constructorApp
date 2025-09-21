@@ -337,7 +337,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
       }
       
       if (result.success) {
-        // Add AI message if provided
+        // Only add AI message if provided - no recording results or count messages
         if (result.message) {
           responses.push({
             id: generateUniqueId(),
@@ -346,48 +346,11 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
             timestamp: new Date(),
             type: "text",
           });
-        }
-        
-        // Add recording results
-        if (result.recordings && result.recordings.length > 0) {
-          if (!result.message) {
-            // Add a default message if no AI message was provided
-            responses.push({
-              id: generateUniqueId(),
-              text: `📂 Found ${result.count} recording${result.count > 1 ? 's' : ''} matching your search:`,
-              isUser: false,
-              timestamp: new Date(),
-              type: "text",
-            });
-          }
-          
-          // Show up to 5 recordings
-          result.recordings.slice(0, 5).forEach((recording, index) => {
-            responses.push({
-              id: generateUniqueId(),
-              text: "",
-              isUser: false,
-              timestamp: new Date(),
-              type: "recording",
-              recordingData: recording,
-            });
-          });
-          
-          // Show "more results" message if there are additional recordings
-          if (result.recordings.length > 5) {
-            responses.push({
-              id: generateUniqueId(),
-              text: `📋 And ${result.recordings.length - 5} more recordings. Try a more specific search to narrow down results.`,
-              isUser: false,
-              timestamp: new Date(),
-              type: "text",
-            });
-          }
-        } else if (!result.message) {
-          // No recordings found and no AI message
+        } else {
+          // If no AI message provided, give a generic response
           responses.push({
             id: generateUniqueId(),
-            text: "🔍 No recordings found matching your search. Try using different keywords or ask me to show all recordings.",
+            text: "I've processed your search request. How can I help you further?",
             isUser: false,
             timestamp: new Date(),
             type: "text",
@@ -429,7 +392,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
     ) {
       responses.push({
         id: generateUniqueId(),
-        text: "👋 Hello! I can help you search your voice recordings using AI. Try asking me:\n\n• 'Find recordings about safety'\n• 'Show my meeting notes'\n• 'Search for project updates'\n• 'What did I record yesterday?'\n\nWhat would you like to find?",
+        text: "👋 Hello! I'm your AI assistant. I can help you with questions about your recordings, provide summaries, or answer general queries. What would you like to know?",
         isUser: false,
         timestamp: new Date(),
         type: "text",
@@ -545,6 +508,18 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
     }
   };
 
+  const clearChat = () => {
+    setMessages([
+      {
+        id: "initial_message",
+        text: "Hi! I'm your AI assistant. I can help you find recordings, summarize content, or answer questions about your voice memos. What would you like to know?",
+        isUser: false,
+        timestamp: new Date(),
+        type: "text",
+      },
+    ]);
+  };
+
   const inputStyle = useAnimatedStyle(() => ({
     transform: [{ scale: inputScale.value }],
   }));
@@ -628,9 +603,14 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
               <Text style={styles.emailerModeText}>
                 Chat Mode
               </Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
+              <View style={styles.headerButtons}>
+                <TouchableOpacity onPress={clearChat} style={styles.deleteButton}>
+                  <MaterialCommunityIcons name="delete-outline" style={styles.deleteButtonIcon} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={styles.handle} />
           </Animated.View>
@@ -694,7 +674,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
                   style={styles.micButton}
                   activeOpacity={0.7}
                 >
-                  <MaterialCommunityIcons name="microphone" style={styles.micIcon} />
+                  <MaterialCommunityIcons name="arrow-left" style={styles.micIcon} />
                 </TouchableOpacity>
                 <Animated.View style={[styles.inputWrapper, inputStyle]}>
                   <TextInput
@@ -740,7 +720,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
                   </TouchableOpacity>
                   <Text style={styles.keyboardText}>Want to type?</Text>
                 </View>
-                <Animated.View
+                {/* <Animated.View
                   style={[styles.recordButtonContainer, recordButtonStyle]}
                 >
                   <TouchableOpacity
@@ -760,7 +740,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
                       ]}
                     />
                   </TouchableOpacity>
-                </Animated.View>
+                </Animated.View> */}
                 <View style={styles.emailerModeContainer}>
                   <TouchableOpacity
                     onPress={toggleEmailerMode}
@@ -866,6 +846,34 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 18,
     color: "#FFFFFF",
+    fontWeight: "600",
+  },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  deleteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 59, 48, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 59, 48, 0.3)",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  deleteButtonIcon: {
+    fontSize: 18,
+    color: "#FF3B30",
     fontWeight: "600",
   },
   keyboardContainer: {

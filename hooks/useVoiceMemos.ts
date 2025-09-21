@@ -1,6 +1,6 @@
 import { AudioRecorder, setAudioModeAsync, useAudioRecorder, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Dimensions, Platform, Vibration } from 'react-native';
+import { Dimensions, Platform, Vibration } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
   runOnJS,
@@ -15,6 +15,8 @@ import { recordingService } from '../services/recordingService';
 import { initialMemos } from '../utils/recordsData';
 import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
+import { config } from '../config/app.config';
+import { customAlert } from '../services/customAlertService';
 
 // and fall back to estimating from file size and configured bit rate.
 
@@ -35,7 +37,7 @@ export const useVoiceMemos = (options?: {
   onDeleteSuccess?: (message: string) => void;
 }) => {
   // Get authentication context
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   
   // Get selected site context
   const { selectedSite } = useSite();
@@ -77,6 +79,15 @@ export const useVoiceMemos = (options?: {
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Date picker state
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [pendingRecording, setPendingRecording] = useState<{
+    audioRecorder: AudioRecorder;
+    duration: number;
+    title: string;
+  } | null>(null);
 
   // Animation values
   const recordButtonScale = useSharedValue(1);
@@ -172,6 +183,54 @@ export const useVoiceMemos = (options?: {
       return { success: false, error: 'No authentication token available' };
     }
 
+    // Check if user has admin privileges OR is the owner/contributor of the recording
+    const isAdmin = user?.role === 'admin';
+    
+    if (!isAdmin) {
+      // For non-admin users, check if they are the owner or contributor
+      try {
+        // Fetch the day log details to check ownership/contributorship
+        const dayLogResponse = await fetch(`${config.backend.baseUrl}/recording/day/${encodeURIComponent(recordId)}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        });
+        
+        if (dayLogResponse.ok) {
+          const dayLogData = await dayLogResponse.json();
+          const contributors = dayLogData.contributors || [];
+          const createdBy = dayLogData.created_by;
+          const userEmail = user?.email;
+          
+          // Check if user is the creator or a contributor
+          const isOwner = createdBy === userEmail;
+          const isContributor = contributors.includes(userEmail);
+          
+          if (!isOwner && !isContributor) {
+            console.log(`[${new Date().toISOString()}] ⚠️ DELETE_SKIP - User is not owner/contributor, cannot delete record`);
+            return { 
+              success: false, 
+              error: 'You can only delete recordings that you created or contributed to. Please contact your admin to delete this recording.' 
+            };
+          }
+        } else {
+          console.log(`[${new Date().toISOString()}] ⚠️ DELETE_SKIP - Could not verify ownership, denying delete`);
+          return { 
+            success: false, 
+            error: 'Could not verify ownership of this recording. Please contact your admin to delete this recording.' 
+          };
+        }
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] ❌ DELETE_OWNERSHIP_CHECK - Error checking ownership:`, error);
+        return { 
+          success: false, 
+          error: 'Could not verify ownership of this recording. Please contact your admin to delete this recording.' 
+        };
+      }
+    }
+
     console.log(`[${new Date().toISOString()}] 🗑️ DELETE_REQUEST - ${recordId}`);
     
     try {
@@ -202,7 +261,7 @@ export const useVoiceMemos = (options?: {
       console.log(`[${new Date().toISOString()}] ❌ DELETE_FAILED - ${recordId} - ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
-  }, [token, options]);
+  }, [token, user, options]);
 
   // Simple site change handler - clear records when site changes
   useEffect(() => {
@@ -473,7 +532,7 @@ export const useVoiceMemos = (options?: {
       );
     } catch (error) {
       console.error('Failed to start recording:', error);
-      Alert.alert('Recording Error', 'Failed to start recording. Please check your permissions.');
+      customAlert.error('Recording Error', 'Failed to start recording. Please check your permissions.');
     }
   };
 
@@ -484,9 +543,8 @@ export const useVoiceMemos = (options?: {
       await audioRecorder.stop();
       const status = audioRecorder.getStatus();
       
-      // Immediately set saving state and stop recording state
+      // Stop recording state but don't set saving yet
       setIsRecording(false);
-      setIsSaving(true);
       
       // Reset button animations immediately
       recordButtonOpacity.value = withTiming(1);
@@ -534,60 +592,94 @@ export const useVoiceMemos = (options?: {
         const nextIdx = getNextDailyIndex(prefix);
         const generatedTitle = `${prefix}_${nextIdx}`;
 
-        // Proceed with upload using new multipart format
-        const job_id = selectedSite?.id || 'CFX 417-151'; // Use site ObjectId instead of siteId
-        console.log('🎙️ Creating recording with job_id:', job_id, 'from site:', selectedSite?.name);
-        
-        const uploadResult = await recordingService.uploadRecordingAsJSON(audioRecorder, {
+        // Store the recording data and show date picker
+        setPendingRecording({
+          audioRecorder,
+          duration: actualDurationMs,
           title: generatedTitle,
-          jobNumber: job_id, // This will be converted to job_id in the service
-          type: 'Voice Memo',
-          transcription: liveTranscription || undefined,
-          durationOverrideMs: actualDurationMs,
-        }, token || undefined);
-
-        if (uploadResult.success) {
-          console.log('  Recording uploaded successfully, refreshing data...');
-          
-          // Immediately refresh both work progress and daily recordings
-          try {
-            // Refresh work progress data
-            if (options?.onRefreshProgress) {
-              console.log('  Refreshing work progress...');
-              await options.onRefreshProgress();
-            }
-            
-            // Refresh daily recordings to get the updated consolidated data
-            console.log('  Refreshing daily recordings...');
-            await fetchRecordings();
-            
-            console.log('  Data refresh completed');
-          } catch (refreshError) {
-            console.error('  Failed to refresh data after upload:', refreshError);
-            // Continue with success flow even if refresh fails
-          }
-          
-          // Reset saving state and trigger success callback
-          setIsSaving(false);
-          if (options?.onUploadSuccess) {
-            options.onUploadSuccess('  Recording uploaded successfully!');
-          }
-        } else {
-          setIsSaving(false);
-          Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload recording');
-        }
+        });
+        setSelectedDate(new Date()); // Default to today
+        setShowDatePicker(true);
         
-        setIsUploading(false);
-        setUploadProgress(0);
       } else {
         console.log('No recording URI available');
-        setIsSaving(false);
-        Alert.alert('Recording Error', 'No recording was saved. Please try again.');
+        customAlert.error('Recording Error', 'No recording was saved. Please try again.');
       }
     } catch (error) {
       console.error('Failed to stop recording:', error);
-      Alert.alert('Recording Error', 'Failed to stop recording properly.');
+      customAlert.error('Recording Error', 'Failed to stop recording properly.');
       setIsRecording(false);
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  // Date picker handlers
+  const handleDatePickerClose = () => {
+    setShowDatePicker(false);
+    setPendingRecording(null);
+  };
+
+  const handleDatePickerConfirm = async (selectedDate: Date) => {
+    if (!pendingRecording) return;
+    
+    setShowDatePicker(false);
+    setIsSaving(true);
+    
+    try {
+      // Proceed with upload using the selected date
+      const job_id = selectedSite?.id || 'CFX 417-151';
+      console.log('🎙️ Creating recording with job_id:', job_id, 'from site:', selectedSite?.name);
+      console.log('📅 Selected date:', selectedDate.toISOString().split('T')[0]);
+      
+      const uploadResult = await recordingService.uploadRecordingAsJSON(pendingRecording.audioRecorder, {
+        title: pendingRecording.title,
+        jobNumber: job_id,
+        type: 'Voice Memo',
+        transcription: liveTranscription || undefined,
+        durationOverrideMs: pendingRecording.duration,
+        selectedDate: selectedDate, // Pass the selected date
+      }, token || undefined);
+
+      if (uploadResult.success) {
+        console.log('  Recording uploaded successfully, refreshing data...');
+        
+        // Immediately refresh both work progress and daily recordings
+        try {
+          // Refresh work progress data
+          if (options?.onRefreshProgress) {
+            console.log('  Refreshing work progress...');
+            await options.onRefreshProgress();
+          }
+          
+          // Refresh daily recordings to get the updated consolidated data
+          console.log('  Refreshing daily recordings...');
+          await fetchRecordings();
+          
+          console.log('  Data refresh completed');
+        } catch (refreshError) {
+          console.error('  Failed to refresh data after upload:', refreshError);
+          // Continue with success flow even if refresh fails
+        }
+        
+        // Reset saving state and trigger success callback
+        setIsSaving(false);
+        if (options?.onUploadSuccess) {
+          options.onUploadSuccess('  Recording uploaded successfully!');
+        }
+      } else {
+        setIsSaving(false);
+        customAlert.error('Upload Failed', uploadResult.error || 'Failed to upload recording');
+      }
+      
+      setPendingRecording(null);
+      setIsUploading(false);
+      setUploadProgress(0);
+    } catch (error) {
+      console.error('Failed to upload recording:', error);
+      customAlert.error('Upload Error', 'Failed to upload recording properly.');
+      setIsSaving(false);
+      setPendingRecording(null);
       setIsUploading(false);
       setUploadProgress(0);
     }
@@ -779,6 +871,11 @@ export const useVoiceMemos = (options?: {
     isUploading,
     uploadProgress,
     
+    // Date picker state
+    showDatePicker,
+    selectedDate,
+    pendingRecording,
+    
     // Animation values
     recordButtonScale,
     recordButtonOpacity,
@@ -822,6 +919,10 @@ export const useVoiceMemos = (options?: {
     formatDuration,
     fetchRecordings,
     deleteRecord,
+    
+    // Date picker functions
+    handleDatePickerClose,
+    handleDatePickerConfirm,
   };
 };
 
@@ -834,11 +935,30 @@ function mapBackendRecordingToListItem(dayRecording: any) {
   // Format duration from totalDuration or structuredSummary duration
   const durationStr = dayRecording.totalDuration || structuredSummary.duration || '00:00';
   
-  // Use just the date as the title
-  const title = dayRecording.date || structuredSummary.date || new Date().toLocaleDateString();
+  // Get the actual recording date from backend (local_date field)
+  const recordingDate = dayRecording.local_date || dayRecording.date || structuredSummary.date;
   
-  // Format date for display
-  const dateStr = dayRecording.date || structuredSummary.date || new Date().toLocaleDateString();
+  // Format the date for display (convert from YYYY-MM-DD to readable format)
+  const formatDateForDisplay = (dateStr: string) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        month: 'numeric', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch (error) {
+      console.warn('Failed to parse date:', dateStr, error);
+      return dateStr; // Return original string if parsing fails
+    }
+  };
+  
+  // Use the formatted date as the title
+  const title = formatDateForDisplay(recordingDate) || 'Unknown Date';
+  
+  // Format date for display (same as title for consistency)
+  const dateStr = formatDateForDisplay(recordingDate) || 'Unknown Date';
 
   return {
     id: dayRecording.id || `day_${Date.now()}`,
@@ -858,11 +978,27 @@ function mapBackendRecordingToListItem(dayRecording: any) {
 }
 
 function createEmptyRecordDetailFromListItem(item: any): RecordDetail {
+  // Format date consistently with the list item mapping
+  const formatDateForDisplay = (dateStr: string) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        month: 'numeric', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch (error) {
+      console.warn('Failed to parse date:', dateStr, error);
+      return dateStr; // Return original string if parsing fails
+    }
+  };
+  
   return {
     id: item?.id || `rec_${Date.now()}`,
     title: item?.title || 'Recording',
     duration: item?.duration || '00:00',
-    date: item?.date || new Date().toLocaleString(),
+    date: formatDateForDisplay(item?.date) || 'Unknown Date',
     jobNumber: item?.jobNumber || '-',
     structuredSummary: item?.structuredSummary, // Include the structuredSummary data
     images: item?.images || [], // Include images from backend

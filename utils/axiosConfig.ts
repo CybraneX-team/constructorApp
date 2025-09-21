@@ -6,6 +6,10 @@ import { API_BASE_URL } from './apiConfig';
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
 });
 
 // Request interceptor to add token to all requests

@@ -22,7 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { recordingService } from '../services/recordingService';
 import { config } from '../config/app.config';
 import { Ionicons } from '@expo/vector-icons';
-import EditFieldModal, { EditFieldModalProps } from './EditFieldModal';
+import EditModal, { EditModalProps } from './EditModal';
 import ExportOptionsModal from './ExportOptionsModal';
 import { 
   EditableLaborCard, 
@@ -37,7 +37,7 @@ const isSmallScreen = screenWidth < 360;
 // Separate component for detail content to avoid hook violations
 const DetailContent: React.FC<{ 
   record: any;
-  onEditField?: (fieldType: EditFieldModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => void;
+  onEditField?: (fieldType: EditModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => void;
   onDeleteImage?: (imageId: string) => void;
 }> = ({ record, onEditField, onDeleteImage }) => {
   console.log('🔍 DetailContent - Record received:', JSON.stringify(record, null, 2));
@@ -605,6 +605,30 @@ function normalizeLaborRow(row: any): any {
     const h = computeHours(safe.startTime, safe.finishTime);
     if (h != null) safe.hours = h;
   }
+
+  // Calculate rate as total/hours if both are available and rate is not already set
+  const totalValue = safe.total || '';
+  const hoursValue = safe.hours || '';
+  
+  // Only calculate rate if we have both total and hours, and rate is not already set
+  if (totalValue && hoursValue && !isNaN(parseFloat(totalValue)) && !isNaN(parseFloat(hoursValue)) && parseFloat(hoursValue) > 0) {
+    // Check if rate is already set and not a default value
+    if (!safe.rate || safe.rate === '$-' || safe.rate === '') {
+      const rate = parseFloat(totalValue) / parseFloat(hoursValue);
+      safe.rate = `$${rate.toFixed(2)}`;
+      console.log(`[${new Date().toISOString()}] 🔍 NORMALIZE_RATE_CALCULATED - Total: ${totalValue}, Hours: ${hoursValue}, Rate: ${safe.rate}`);
+    }
+  } else if (!safe.rate || safe.rate === '$-') {
+    safe.rate = '$-';
+  }
+
+  // Ensure total is formatted as currency
+  if (safe.total && !safe.total.startsWith('$') && !isNaN(parseFloat(safe.total))) {
+    safe.total = `$${parseFloat(safe.total).toFixed(2)}`;
+  } else if (!safe.total || safe.total === '$-') {
+    safe.total = '$-';
+  }
+
   return safe;
 }
 
@@ -625,7 +649,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   const [exportAction, setExportAction] = useState<'share' | 'download' | null>(null);
   const [editModal, setEditModal] = useState<{
     visible: boolean;
-    fieldType: EditFieldModalProps['fieldType'];
+    fieldType: EditModalProps['fieldType'];
     fieldLabel: string;
     fieldPath: string;
     initialValue: any;
@@ -701,6 +725,20 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
               if (summaryResponse.ok) {
                 const summaryResult = await summaryResponse.json();
                 console.log('🔍 RecordDetailView - Fresh summary data:', JSON.stringify(summaryResult, null, 2));
+                
+                // Log ALL fields in the API response
+                console.log('🔍 RecordDetailView - API Response top-level fields:', Object.keys(summaryResult || {}));
+                if (summaryResult?.summary) {
+                  console.log('🔍 RecordDetailView - Summary object fields:', Object.keys(summaryResult.summary || {}));
+                  if (summaryResult.summary?.labor) {
+                    console.log('🔍 RecordDetailView - Labor array length:', summaryResult.summary.labor?.length || 0);
+                    if (Array.isArray(summaryResult.summary.labor) && summaryResult.summary.labor.length > 0) {
+                      console.log('🔍 RecordDetailView - First labor item ALL fields:', Object.keys(summaryResult.summary.labor[0] || {}));
+                      console.log('🔍 RecordDetailView - First labor item ALL values:', JSON.stringify(summaryResult.summary.labor[0], null, 2));
+                    }
+                  }
+                }
+                
                 freshRecord.structuredSummary = summaryResult.summary || null;
                 // Include images from the summary response
                 freshRecord.images = summaryResult.images || [];
@@ -821,7 +859,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
     setExportAction(null);
   };
 
-  const handleEditField = (fieldType: EditFieldModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => {
+  const handleEditField = (fieldType: EditModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => {
     console.log(`[${new Date().toISOString()}] 📝 EDIT_FIELD_OPEN - ${fieldLabel} (${fieldPath})`);
     console.log('Edit field data:', { fieldType, fieldLabel, fieldPath, initialValue, placeholder });
     
@@ -1033,8 +1071,8 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         )}
       </Animated.View>
       
-      {/* EditFieldModal - positioned at same level as RecordDetailView */}
-      <EditFieldModal
+      {/* EditModal - positioned at same level as RecordDetailView */}
+      <EditModal
         visible={editModal.visible}
         onClose={() => setEditModal({ ...editModal, visible: false })}
         onSave={handleSaveField}
@@ -1042,6 +1080,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
         fieldLabel={editModal.fieldLabel}
         initialValue={editModal.initialValue}
         placeholder={editModal.placeholder}
+        
       />
       
       {/* ExportOptionsModal */}
@@ -1056,10 +1095,30 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
   );
 };
 
+// Standard labor rates for automatic calculation
+const STANDARD_LABOR_RATES: Record<string, number> = {
+  manager: 75.00,
+  foreman: 65.00,
+  carpenter: 55.00,
+  skillLaborer: 45.00,
+  carpenterExtra: 55.00,
+  // Add more roles as needed
+};
+
 function mapSummaryToRecordDetail(existing: any, summary: any): any {
   console.log('🔍 mapSummaryToRecordDetail - Starting mapping...');
   console.log('🔍 mapSummaryToRecordDetail - Existing record:', JSON.stringify(existing, null, 2));
   console.log('🔍 mapSummaryToRecordDetail - Summary data:', JSON.stringify(summary, null, 2));
+  
+  // Log ALL available fields in the summary response
+  console.log('🔍 mapSummaryToRecordDetail - Summary top-level fields:', Object.keys(summary || {}));
+  if (summary?.labor) {
+    console.log('🔍 mapSummaryToRecordDetail - Labor data type:', Array.isArray(summary.labor) ? 'array' : 'object');
+    if (Array.isArray(summary.labor) && summary.labor.length > 0) {
+      console.log('🔍 mapSummaryToRecordDetail - First labor item fields:', Object.keys(summary.labor[0] || {}));
+      console.log('🔍 mapSummaryToRecordDetail - First labor item values:', JSON.stringify(summary.labor[0], null, 2));
+    }
+  }
 
   // Some backends wrap real data inside a `summary` key. Unwrap if present.
   const s = summary && typeof summary === 'object' && summary.summary ? summary.summary : summary;
@@ -1096,21 +1155,80 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
     for (const item of s.labor) {
       const key = roleToKey(item?.role);
       if (!key) continue;
+      
+      // Debug: Log ALL fields from the API response
+      console.log(`[${new Date().toISOString()}] 🔍 API_LABOR_DATA - Role: ${item?.role}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_LABOR_FIELDS - Available fields:`, Object.keys(item || {}));
+      console.log(`[${new Date().toISOString()}] 🔍 API_LABOR_VALUES - All values:`, JSON.stringify(item, null, 2));
+      
+      // According to MIGRATION.md, the new API structure only provides:
+      // { "role": "", "startTime": "", "finishTime": "", "hours": 0 }
+      // No total or rate fields are provided by the API
+      const apiHours = item?.hours || '';
+      
+      console.log(`[${new Date().toISOString()}] 🔍 API_CALCULATION - Role: ${item?.role}, Hours: ${apiHours}`);
+      
+      // Check what fields are available in the API response
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Role: ${item?.role}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has rate field: ${item?.rate !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has total field: ${item?.total !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has price field: ${item?.price !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has cost field: ${item?.cost !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has amount field: ${item?.amount !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has wage field: ${item?.wage !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has salary field: ${item?.salary !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has pay field: ${item?.pay !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has compensation field: ${item?.compensation !== undefined}`);
+      
+      // Use existing data if available, otherwise show defaults
+      const existingTotal = existing?.laborData?.[key]?.total || '$-';
+      const existingRate = existing?.laborData?.[key]?.rate || '$-';
+      
+      console.log(`[${new Date().toISOString()}] 🔍 EXISTING_DATA - Role: ${item?.role}, Existing Total: ${existingTotal}, Existing Rate: ${existingRate}`);
+      
       laborMap[key] = {
         startTime: item?.startTime ?? '',
         finishTime: item?.finishTime ?? '',
-        hours: item?.hours ?? '',
-        rate: (existing?.laborData?.[key]?.rate ?? '$-'),
-        total: (existing?.laborData?.[key]?.total ?? '$-'),
+        hours: apiHours,
+        rate: existingRate, // Use existing rate since API doesn't provide it
+        total: existingTotal, // Use existing total since API doesn't provide it
         roleName: item?.role ?? key,
       };
     }
   } else {
     // Legacy object shapes: labor, laborData, labor_data
     const laborSrcRaw = (s?.labor || s?.laborData || s?.labor_data || {}) as any;
+    console.log(`[${new Date().toISOString()}] 🔍 LEGACY_LABOR_DATA - Raw data:`, JSON.stringify(laborSrcRaw, null, 2));
+    
     for (const k of Object.keys(laborSrcRaw || {})) {
       const key = roleToKey(k);
-      laborMap[key] = laborSrcRaw[k];
+      const item = laborSrcRaw[k];
+      
+      // Debug: Log the legacy data structure
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_LABOR_ITEM - Key: ${k}, Data:`, JSON.stringify(item, null, 2));
+      
+      // For legacy data, check what fields are available
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Key: ${k}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has rate field: ${item?.rate !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has total field: ${item?.total !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has price field: ${item?.price !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has cost field: ${item?.cost !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has amount field: ${item?.amount !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has wage field: ${item?.wage !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has salary field: ${item?.salary !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has pay field: ${item?.pay !== undefined}`);
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has compensation field: ${item?.compensation !== undefined}`);
+      
+      // Use existing data if available
+      const calculatedRate = item?.rate || existing?.laborData?.[key]?.rate || '$-';
+      const calculatedTotal = item?.total || existing?.laborData?.[key]?.total || '$-';
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FALLBACK - Key: ${k}, Rate: ${calculatedRate}, Total: ${calculatedTotal}`);
+      
+      laborMap[key] = {
+        ...item,
+        rate: calculatedRate,
+        total: calculatedTotal,
+      };
     }
   }
 

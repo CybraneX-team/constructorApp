@@ -63,10 +63,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string, accessKey?: string): Promise<User> => {
     try {
+      console.log('Attempting login with:', { email, hasAccessKey: !!accessKey, apiUrl: `${API_BASE_URL}/auth/signin` });
+      
       const payload: any = { email, password };
       if (accessKey) payload.access_key = accessKey;
 
       const response = await axiosInstance.post('/auth/signin', payload);
+      console.log('Login response received:', response.status);
 
       const { token: newToken } = response.data;
       const tokenPayload = JSON.parse(atob(newToken.split('.')[1]));
@@ -83,6 +86,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
       return userData;
     } catch (error: any) {
+      console.error('Login error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: `${API_BASE_URL}/auth/signin`,
+        code: error.code
+      });
+      
+      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+        throw new Error('Unable to connect to server. Please check your internet connection and try again.');
+      }
+      
       throw new Error(error.response?.data?.error || 'Login failed');
     }
   };

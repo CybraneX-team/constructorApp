@@ -35,6 +35,7 @@ import RefreshOverlay from '../components/RefreshOverlay';
 import { useCircularProgressData } from '../hooks/useCircularProgressData';
 import { useJobProgress } from '../hooks/useJobProgress';
 import { imageService } from '../services/imageService';
+import DatePickerModal from '../components/DatePickerModal';
 
 const VoiceMemosScreen = () => {
   // Get selected site context
@@ -107,6 +108,12 @@ const VoiceMemosScreen = () => {
     handleCloseSearch,
     fetchRecordings,
     deleteRecord,
+    // Date picker state and handlers
+    showDatePicker,
+    selectedDate,
+    pendingRecording,
+    handleDatePickerClose,
+    handleDatePickerConfirm,
   } = useVoiceMemos({ 
     onUploadSuccess: (message: string) => showSuccessToastMessage(message),
     onRefreshProgress: refreshProgress,
@@ -141,6 +148,14 @@ const VoiceMemosScreen = () => {
   const [showRefreshOverlay, setShowRefreshOverlay] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshSuccess, setRefreshSuccess] = useState(false);
+  
+  // Image date picker state
+  const [showImageDatePicker, setShowImageDatePicker] = useState(false);
+  const [pendingImageData, setPendingImageData] = useState<{
+    images: string[];
+    description: string;
+  } | null>(null);
+  const [imageUploadDate, setImageUploadDate] = useState(new Date());
 
 
   
@@ -314,29 +329,99 @@ const VoiceMemosScreen = () => {
         return;
       }
 
-      console.log('📸 Uploading images for job:', selectedSite.site_id);
-      console.log('📸 Images selected:', selectedImages.length);
+      console.log('📸 Preparing images for upload:', selectedImages.length);
       console.log('📸 Description:', desc);
+      console.log('📸 DEBUG - Recording selectedDate:', selectedDate.toISOString().split('T')[0]);
+      console.log('📸 DEBUG - Using recording date for image picker consistency');
+
+      // Store pending image data and show date picker
+      setPendingImageData({
+        images: [...selectedImages],
+        description: desc
+      });
+      // Use the same date as recording date picker for consistency
+      setImageUploadDate(selectedDate);
+      setShowDescriptionPrompt(false);
+      setShowImageDatePicker(true);
+
+    } catch (error) {
+      console.error('📸 Error preparing image upload:', error);
+      customAlert.error(
+        'Error', 
+        `Failed to prepare image upload: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  };
+
+  // Show description prompt with a tiny delay to avoid overlapping with picker closing animation on Android
+  const showDescriptionPromptSafely = () => {
+    setTimeout(() => setShowDescriptionPrompt(true), 150);
+  };
+
+  // Handle image date picker close
+  const handleImageDatePickerClose = () => {
+    setShowImageDatePicker(false);
+    setPendingImageData(null);
+  };
+
+  // Handle image date picker confirmation and upload
+  const handleImageDatePickerConfirm = async (selectedDate: Date) => {
+    if (!pendingImageData || !selectedSite) {
+      console.error('📸 No pending image data or selected site');
+      return;
+    }
+
+    console.log('📸 DEBUG - Date picker confirmed with date:', selectedDate);
+    console.log('📸 DEBUG - Selected date ISO:', selectedDate.toISOString());
+    console.log('📸 DEBUG - Selected date formatted:', selectedDate.toISOString().split('T')[0]);
+    console.log('📸 DEBUG - Initial imageUploadDate was:', imageUploadDate.toISOString().split('T')[0]);
+
+    setShowImageDatePicker(false);
+    
+    try {
+      console.log('📸 Uploading images for job:', selectedSite.site_id);
+      console.log('📸 Images selected:', pendingImageData.images.length);
+      console.log('📸 Description:', pendingImageData.description);
+      console.log('📸 Selected date:', selectedDate.toISOString().split('T')[0]);
 
       // Show loading state
-      setShowDescriptionPrompt(false);
       setShowRefreshOverlay(true);
       setRefreshMessage('Uploading images...');
       setRefreshSuccess(false);
 
-      // First, get the current day recording ID for this job
-      const currentRecordingId = await imageService.getCurrentDayRecordingId(selectedSite.id, token || undefined);
-      console.log('📸 Current day recording ID:', currentRecordingId);
+      // Since backend requires existing day_id, we'll search for day recording on the selected date
+      // The selected date is passed to find the correct day recording
+      const currentRecordingId = await imageService.getCurrentDayRecordingId(selectedSite.id, token || undefined, selectedDate);
+      console.log('📸 Using day recording ID for selected date:', currentRecordingId);
+      console.log('📸 Selected date will be stored in metadata:', selectedDate.toISOString().split('T')[0]);
 
-      // Upload each image
-      const uploadPromises = selectedImages.map(async (imageUri, index) => {
-        console.log(`📸 Uploading image ${index + 1}/${selectedImages.length}:`, imageUri);
+      // Check if we have a valid day recording ID
+      if (!currentRecordingId) {
+        const selectedDateFormatted = selectedDate.toLocaleDateString();
+        console.error('📸 No day recording found for this site on selected date. Images require an existing day recording.');
+        setRefreshMessage(`No recordings found for ${selectedDateFormatted}. Please create a voice recording for this date first before uploading images.`);
+        setRefreshSuccess(false);
+        
+        // Hide overlay after a delay
+        setTimeout(() => {
+          setShowRefreshOverlay(false);
+        }, 4000);
+        
+        setPendingImageData(null);
+        setSelectedImages([]);
+        return;
+      }
+
+      // Upload each image with the selected date
+      const uploadPromises = pendingImageData.images.map(async (imageUri, index) => {
+        console.log(`📸 Uploading image ${index + 1}/${pendingImageData.images.length}:`, imageUri);
         
         const metadata = {
-          caption: desc,
+          caption: pendingImageData.description,
           uploadIndex: index + 1,
-          totalImages: selectedImages.length,
+          totalImages: pendingImageData.images.length,
           uploadedAt: new Date().toISOString(),
+          selectedDate: selectedDate.toISOString(), // Include selected date in metadata
         };
 
         const result = await imageService.uploadImage(
@@ -344,7 +429,8 @@ const VoiceMemosScreen = () => {
           selectedSite.id, // Use site ObjectId as job_id
           metadata,
           token || undefined,
-          currentRecordingId || undefined
+          currentRecordingId || undefined,
+          selectedDate // Pass selected date to service
         );
 
         if (!result.success) {
@@ -358,7 +444,7 @@ const VoiceMemosScreen = () => {
       const results = await Promise.all(uploadPromises);
       const successfulUploads = results.filter(r => r.success).length;
 
-      console.log('📸 Upload completed:', successfulUploads, 'successful out of', selectedImages.length);
+      console.log('📸 Upload completed:', successfulUploads, 'successful out of', pendingImageData.images.length);
 
       // Refresh data to include new images
       await fetchRecordings();
@@ -367,8 +453,9 @@ const VoiceMemosScreen = () => {
       setRefreshMessage(`Successfully uploaded ${successfulUploads} images!`);
       setRefreshSuccess(true);
 
-      // Clear selected images
+      // Clear state
       setSelectedImages([]);
+      setPendingImageData(null);
 
       // Hide overlay after a delay
       setTimeout(() => {
@@ -391,11 +478,6 @@ const VoiceMemosScreen = () => {
         `Failed to upload images: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-  };
-
-  // Show description prompt with a tiny delay to avoid overlapping with picker closing animation on Android
-  const showDescriptionPromptSafely = () => {
-    setTimeout(() => setShowDescriptionPrompt(true), 150);
   };
 
   // Show toast message
@@ -680,6 +762,30 @@ const VoiceMemosScreen = () => {
             modalScale={workProgressModalScale}
             modalOpacity={workProgressModalOpacity}
             backdropOpacity={workProgressBackdropOpacity}
+          />
+
+          {/* Date Picker Modal */}
+          <DatePickerModal
+            visible={showDatePicker}
+            onClose={handleDatePickerClose}
+            onConfirm={handleDatePickerConfirm}
+            initialDate={selectedDate}
+            isSaving={isSaving}
+            modalScale={recordDetailScale}
+            modalOpacity={recordDetailOpacity}
+            backdropOpacity={recordDetailBackdropOpacity}
+          />
+
+          {/* Image Date Picker Modal */}
+          <DatePickerModal
+            visible={showImageDatePicker}
+            onClose={handleImageDatePickerClose}
+            onConfirm={handleImageDatePickerConfirm}
+            initialDate={imageUploadDate}
+            isSaving={showRefreshOverlay}
+            modalScale={recordDetailScale}
+            modalOpacity={recordDetailOpacity}
+            backdropOpacity={recordDetailBackdropOpacity}
           />
 
           {/* Refresh Overlay */}
