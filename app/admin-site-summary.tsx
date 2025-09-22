@@ -4,7 +4,7 @@ import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { API_BASE_URL } from '../utils/apiConfig';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import EditFieldModal, { EditFieldModalProps } from '../components/EditFieldModal';
+import EditModal, { EditModalProps } from '../components/EditModal';
 import { 
   EditableLaborCard,
   EditableSubcontractorCard,
@@ -71,7 +71,7 @@ const AdminSiteSummary: React.FC = () => {
   const [dayLog, setDayLog] = useState<AdminDayLog | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [recordView, setRecordView] = useState<any>(null);
-  const [editModal, setEditModal] = useState<{ visible: boolean; fieldType: EditFieldModalProps['fieldType']; fieldLabel: string; fieldPath: string; initialValue: any; placeholder?: string; }>({ visible: false, fieldType: 'text', fieldLabel: '', fieldPath: '', initialValue: '' });
+  const [editModal, setEditModal] = useState<{ visible: boolean; fieldType: EditModalProps['fieldType']; fieldLabel: string; fieldPath: string; initialValue: any; placeholder?: string; }>({ visible: false, fieldType: 'text', fieldLabel: '', fieldPath: '', initialValue: '' });
 
   useEffect(() => {
     if (!id || !site) return;
@@ -121,10 +121,90 @@ const AdminSiteSummary: React.FC = () => {
           customMetadata: img.customMetadata,
         })).filter((img: any) => isNonEmptyString(img.url));
 
-        const labor = s.labor || s.laborData || s.labor_data || {};
-        const subcontractors = s.subcontractors || s.subcontractor || {};
-        const materials = s.materialsDeliveries || s.materials || {};
-        const equipment = s.equipment || {};
+        // Build labor as object keyed by role name when API provides an array
+        let labor: Record<string, any> = {} as any;
+        if (Array.isArray(s.labor)) {
+          const toCamelKey = (name?: string) => {
+            if (!name) return '';
+            const parts = name.trim().replace(/[^a-zA-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+            if (!parts.length) return '';
+            const [first, ...rest] = parts;
+            return first.toLowerCase() + rest.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+          };
+          for (const item of s.labor) {
+            const key = toCamelKey(item?.role) || toCamelKey(item?.name) || toCamelKey(item?.title);
+            if (!key) continue;
+            labor[key] = {
+              startTime: item?.startTime ?? item?.start_time ?? '',
+              finishTime: item?.finishTime ?? item?.finish_time ?? '',
+              hours: item?.hours ?? '',
+              rate: '$-',
+              total: '$-',
+              roleName: item?.role ?? item?.name ?? key,
+            };
+          }
+        } else {
+          labor = (s.labor || s.laborData || s.labor_data || {}) as any;
+        }
+        // Normalize subcontractors/materials/equipment: arrays → objects keyed by name, preserve display name
+        const toCamelKey = (name?: string) => {
+          if (!name) return '';
+          const parts = name.trim().replace(/[^a-zA-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+          if (!parts.length) return '';
+          const [first, ...rest] = parts;
+          return first.toLowerCase() + rest.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+        };
+
+        let subcontractors: Record<string, any> = {};
+        if (Array.isArray(s.subcontractors)) {
+          for (const sc of s.subcontractors) {
+            const key = toCamelKey(sc?.name);
+            if (!key) continue;
+            subcontractors[key] = {
+              name: sc?.name ?? key,
+              employees: sc?.numberOfEmployees ?? sc?.employees ?? 0,
+              hours: sc?.hours ?? 0,
+            };
+          }
+        } else if (s.subcontractors || s.subcontractor) {
+          subcontractors = (s.subcontractors || s.subcontractor) as any;
+        }
+
+        let materials: Record<string, any> = {};
+        if (Array.isArray(s.materials)) {
+          for (const m of s.materials) {
+            const key = toCamelKey(m?.name);
+            if (!key) continue;
+            const qty = m?.quantity;
+            const uom = m?.unitOfMeasure;
+            materials[key] = {
+              name: m?.name ?? key,
+              qty: qty === undefined || qty === null ? '' : Number(qty).toFixed(2),
+              uom: uom ?? '',
+              unitRate: '$-',
+              tax: '$-',
+              total: '$-',
+            };
+          }
+        } else if (s.materialsDeliveries || s.materials) {
+          materials = (s.materialsDeliveries || s.materials) as any;
+        }
+
+        let equipment: Record<string, any> = {};
+        if (Array.isArray(s.equipment)) {
+          for (const eq of s.equipment) {
+            const key = toCamelKey(eq?.name);
+            if (!key) continue;
+            equipment[key] = {
+              name: eq?.name ?? key,
+              days: eq?.daysUsed ?? eq?.days ?? 0,
+              monthlyRate: '$-',
+              itemRate: '$-',
+            };
+          }
+        } else if (s.equipment) {
+          equipment = s.equipment as any;
+        }
 
         const view = {
           id: id,
@@ -154,7 +234,7 @@ const AdminSiteSummary: React.FC = () => {
     }
   };
 
-  const onEditField = (fieldType: EditFieldModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => {
+  const onEditField = (fieldType: EditModalProps['fieldType'], fieldLabel: string, fieldPath: string, initialValue: any, placeholder?: string) => {
     setEditModal({ visible: true, fieldType, fieldLabel, fieldPath, initialValue, placeholder });
   };
 
@@ -262,7 +342,15 @@ const AdminSiteSummary: React.FC = () => {
 
         {showActivities && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>DAILY ACTIVITIES</Text>
+              <TouchableOpacity
+                onPress={() => onEditField('multiline', 'Daily Activities', 'dailyActivities', recordView.dailyActivities)}
+                style={styles.editButton}
+              >
+                <Ionicons name="create-outline" size={16} color="#007AFF" />
+              </TouchableOpacity>
+            </View>
             <View style={styles.cardBox}>
               <Text style={styles.paragraph}>{recordView.dailyActivities}</Text>
             </View>
@@ -276,7 +364,7 @@ const AdminSiteSummary: React.FC = () => {
               hasMeaningfulObject(data) ? (
                 <EditableSubcontractorCard
                   key={key}
-                  company={key}
+                  company={data?.name || key.replace(/([A-Z])/g, ' $1').replace(/^./, (m) => m.toUpperCase())}
                   employees={data?.employees || 0}
                   hours={data?.hours || 0}
                   contractorKey={key}
@@ -294,7 +382,7 @@ const AdminSiteSummary: React.FC = () => {
               hasLaborRoleData(data) ? (
                 <EditableLaborCard
                   key={roleKey}
-                  title={roleKey}
+                  title={data?.roleName || roleKey.replace(/([A-Z])/g, ' $1').replace(/^./, (m) => m.toUpperCase())}
                   data={data}
                   color="#000"
                   roleKey={roleKey}
@@ -310,7 +398,7 @@ const AdminSiteSummary: React.FC = () => {
             <Text style={styles.sectionTitle}>MATERIALS DELIVERIES</Text>
             {Object.entries(recordView.materialsDeliveries).map(([k, v]: [string, any]) => (
               hasMeaningfulObject(v) ? (
-                <EditableMaterialCard key={k} title={k} data={v} color="#000" materialKey={k} onEditField={onEditField} />
+                <EditableMaterialCard key={k} title={v?.name || k.replace(/([A-Z])/g, ' $1').replace(/^./, (m) => m.toUpperCase())} data={v} color="#000" materialKey={k} onEditField={onEditField} />
               ) : null
             ))}
           </View>
@@ -321,7 +409,7 @@ const AdminSiteSummary: React.FC = () => {
             <Text style={styles.sectionTitle}>EQUIPMENT</Text>
             {Object.entries(recordView.equipment).map(([k, v]: [string, any]) => (
               hasMeaningfulObject(v) ? (
-                <EditableEquipmentCard key={k} title={k} data={v} color="#000" equipmentKey={k} onEditField={onEditField} />
+                <EditableEquipmentCard key={k} title={v?.name || k.replace(/([A-Z])/g, ' $1').replace(/^./, (m) => m.toUpperCase())} data={v} color="#000" equipmentKey={k} onEditField={onEditField} />
               ) : null
             ))}
           </View>
@@ -347,7 +435,7 @@ const AdminSiteSummary: React.FC = () => {
         )}
       </ScrollView>
 
-      <EditFieldModal
+      <EditModal
         visible={editModal.visible}
         onClose={() => setEditModal({ ...editModal, visible: false })}
         onSave={onSaveField}

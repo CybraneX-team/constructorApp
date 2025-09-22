@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
 import { customAlert } from '../services/customAlertService';
 import { recordingService } from '../services/recordingService';
+import { buildDailyWorkSummaryHtml } from '../utils/pdfGenerator';
 
 import Animated, {
     useAnimatedStyle,
@@ -40,154 +41,37 @@ const triggerBackHaptic = () => {
   }
 };
 
-// HTML generation function for PDF
-function buildDailyWorkSummaryHtml(record: any): string {
-  return `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Daily Work Summary</title>
-        <style>
-          @page { size: A4; margin: 24mm 18mm; }
-          * { box-sizing: border-box; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: #000;
-            margin: 0;
-          }
-          .page { width: 100%; }
-          .header {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 16px;
-            align-items: stretch;
-            margin-bottom: 18px;
-          }
-          .brand {
-            display: grid;
-            grid-template-columns: 56px 1fr;
-            align-items: center;
-            gap: 10px;
-            border: 1px solid #c9ccd1;
-            padding: 10px 12px;
-          }
-          .brand-logo {
-            width: 56px; height: 56px;
-            border-radius: 4px;
-            background: linear-gradient(135deg, #5f666f, #b5b8bd);
-          }
-          .brand-name {
-            display: grid;
-            gap: 6px;
-          }
-          .brand-line-1 { font-weight: 700; letter-spacing: 2px; font-size: 14px; text-transform: uppercase; }
-          .brand-line-2 { font-weight: 700; letter-spacing: 2px; font-size: 18px; text-transform: uppercase; }
-          .title-block {
-            border: 1px solid #c9ccd1;
-            padding: 10px 12px 6px 12px;
-          }
-          .doc-title { font-size: 20px; font-weight: 800; text-transform: uppercase; margin: 0 0 10px 0; }
-          .meta-grid { display: grid; grid-template-columns: 120px 1fr; row-gap: 6px; column-gap: 12px; }
-          .meta-label { font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111; }
-          .meta-value { font-weight: 600; font-size: 12px; color: #000; }
-          .section-header {
-            background: #e6e7ea;
-            color: #000;
-            font-weight: 800;
-            text-transform: uppercase;
-            padding: 8px 10px;
-            border: 1px solid #c9ccd1;
-            margin-top: 16px;
-          }
-          .activities {
-            border: 1px solid #c9ccd1;
-            border-top: none;
-            padding: 12px;
-            font-size: 12px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-          }
-          /* Images section */
-          .images-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-bottom: 16px;
-          }
-          .image-container {
-            border: 1px solid #c9ccd1;
-            padding: 8px;
-            text-align: center;
-          }
-          .site-image {
-            width: 100%;
-            max-width: 200px;
-            height: auto;
-            border-radius: 4px;
-            margin-bottom: 8px;
-          }
-          .image-caption {
-            font-size: 10px;
-            font-weight: 600;
-            color: #666;
-            line-height: 1.2;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="page">
-          <div class="header">
-            <div class="brand">
-              <div class="brand-logo"></div>
-              <div class="brand-name">
-                <div class="brand-line-1">Qualis</div>
-                <div class="brand-line-2">Concrete</div>
-              </div>
-            </div>
-            <div class="title-block">
-              <div class="doc-title">Daily Work Summary</div>
-              <div class="meta-grid">
-                <div class="meta-label">Date:</div>
-                <div class="meta-value">${escapeHtml(record.local_date || '')}</div>
-                <div class="meta-label">Job</div>
-                <div class="meta-value">${escapeHtml(record.jobNumber || '')}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-header">Daily Activities</div>
-          <div class="activities">${escapeHtml(record.structuredSummary?.dailyActivities || record.consolidatedSummary || '')}</div>
-
-          ${record.images && record.images.length > 0 ? `
-            <div class="section-header">Site Photos</div>
-            <div class="images-grid">
-              ${record.images.map((image: any, index: number) => `
-                <div class="image-container">
-                  <img src="${image.url || image.presignedUrl}" alt="Site Photo ${index + 1}" class="site-image" />
-                  <div class="image-caption">
-                    ${image.original_name || image.originalName || `Photo ${index + 1}`}
-                    ${image.customMetadata?.caption ? ` - ${escapeHtml(image.customMetadata.caption)}` : ''}
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
-        </div>
-      </body>
-    </html>
-  `;
-}
-
-function escapeHtml(text: string): string {
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+// Date formatter matching RecordsList (e.g., "Sept 22, 2025")
+const formatDate = (dateString: string | null | undefined) => {
+  try {
+    if (!dateString || dateString === 'undefined' || dateString === 'null') return 'No Date';
+    const clean = dateString.toString().trim();
+    let date = new Date(clean);
+    if (isNaN(date.getTime())) {
+      const ymd = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (ymd) {
+        const [, y, m, d] = ymd;
+        date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+      } else {
+        const mdy = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (mdy) {
+          const [, m2, d2, y2] = mdy;
+          date = new Date(parseInt(y2), parseInt(m2) - 1, parseInt(d2));
+        }
+      }
+    }
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec'];
+    const month = monthNames[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    if (!month || isNaN(day) || isNaN(year)) return 'Invalid Date';
+    return `${month} ${day}, ${year}`;
+  } catch {
+    return 'Error parsing date';
+  }
+};
+// Using shared HTML generator from utils/pdfGenerator
 
 interface EmailModalProps {
   isVisible: boolean;
@@ -380,7 +264,7 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
   }
 
   return (
-    <View style={styles.previewContainer}>
+    <View style={styles.previewContainer} pointerEvents="auto">
       <View style={styles.previewHeader}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
@@ -389,15 +273,21 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.previewContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.previewContent} 
+        showsVerticalScrollIndicator={true} 
+        keyboardShouldPersistTaps="always"
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+      >
         <View style={styles.emailCard}>
-          <Text style={styles.emailSubject}>Subject: Daily Construction Report - {previewData.date}</Text>
+          <Text style={styles.emailSubject}>Subject: Daily Construction Report - {formatDate(previewData.date)}</Text>
           
           <View style={styles.emailBody}>
             <Text style={styles.emailGreeting}>Dear Stakeholders,</Text>
             
             <Text style={styles.emailParagraph}>
-              Please find attached the daily construction report for {previewData.date} for project {previewData.jobNumber}.
+              Please find attached the daily construction report for {formatDate(previewData.date)} for site {selectedSite?.name || previewData.jobNumber}.
             </Text>
 
             {previewData.dailyActivities && (
@@ -528,9 +418,13 @@ const EmailModal: React.FC<EmailModalProps> = ({
       console.log('📧 Recordings API response:', response);
       
       if (response.success && response.dayRecordings) {
-        // No need to filter since backend already filters by job_id
-        console.log('📧 Recordings for site:', selectedSite.id, 'Count:', response.dayRecordings.length);
-        setRecords(response.dayRecordings);
+        const sorted = [...response.dayRecordings].sort((a: any, b: any) => {
+          const da = new Date(a.local_date || a.date || a.created_at || a.timestamp).getTime();
+          const db = new Date(b.local_date || b.date || b.created_at || b.timestamp).getTime();
+          return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+        });
+        console.log('📧 Recordings for site:', selectedSite.id, 'Count:', sorted.length);
+        setRecords(sorted);
       } else {
         console.log('📧 No recordings found or API error');
         setRecords([]);
@@ -786,7 +680,21 @@ Recording Count: ${record.recording_count}
       console.log('📧 Generating PDF for email...');
 
       // Generate PDF using the same method as RecordDetailView
-      const htmlContent = buildDailyWorkSummaryHtml(selectedRecord);
+      // Build a compatible record object with summary and images
+      const summaryRes = await recordingService.getRecordingSummary(selectedRecord.id, token);
+      const recordForPdf: any = {
+        id: selectedRecord.id,
+        date: selectedRecord.local_date || selectedRecord.date,
+        jobNumber: selectedSite?.site_id,
+        siteName: selectedSite?.name,
+        images: summaryRes.success ? (summaryRes.images || []) : [],
+        structuredSummary: summaryRes.success ? (summaryRes.summary || undefined) : undefined,
+        laborData: {},
+        subcontractors: {},
+        materialsDeliveries: {},
+        equipment: {},
+      };
+      const htmlContent = buildDailyWorkSummaryHtml(recordForPdf, true);
       const pdfResult = await Print.printToFileAsync({ html: htmlContent });
       uri = pdfResult.uri;
 
@@ -934,8 +842,8 @@ Recording Count: ${record.recording_count}
       activeOpacity={0.7}
     >
       <View style={styles.recordInfo}>
-        <Text style={styles.recordDate}>{item.local_date}</Text>
-        <Text style={styles.recordJobNumber}>Job: {selectedSite?.site_id || 'Unknown'}</Text>
+        <Text style={styles.recordDate}>{formatDate(item.local_date || item.date)}</Text>
+        <Text style={styles.recordJobNumber}>{selectedSite?.name || 'All Recordings'}</Text>
         <Text style={styles.recordDuration}>
           {item.total_duration} • {item.recording_count} recording{item.recording_count > 1 ? 's' : ''}
         </Text>
@@ -948,14 +856,12 @@ Recording Count: ${record.recording_count}
 
   if (showPreview && selectedRecord) {
     return (
-      <View style={styles.container}>
-        <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
-          <TouchableOpacity
-            style={styles.backdropTouchable}
-            onPress={handleBack}
-            activeOpacity={1}
-          />
-        </Animated.View>
+      <Animated.View style={[styles.overlay, backdropAnimatedStyle]}>
+        <TouchableOpacity
+          style={styles.backdrop}
+          onPress={handleBack}
+          activeOpacity={1}
+        />
         <Animated.View style={[styles.modalContainer, modalAnimatedStyle]}>
           <EmailPreview
             selectedRecord={selectedRecord}
@@ -964,19 +870,18 @@ Recording Count: ${record.recording_count}
             isSending={isSending}
           />
         </Animated.View>
-      </View>
+      </Animated.View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
-        <TouchableOpacity
-          style={styles.backdropTouchable}
-          onPress={onClose}
-          activeOpacity={1}
-        />
-      </Animated.View>
+    <Animated.View style={[styles.overlay, backdropAnimatedStyle]}>
+      <TouchableOpacity
+        style={styles.backdrop}
+        onPress={onClose}
+        activeOpacity={1}
+      />
+
       <Animated.View style={[styles.modalContainer, modalAnimatedStyle]}>
         <View style={styles.header}>
           <Text style={styles.title}>Select Recording to Email</Text>
@@ -984,39 +889,49 @@ Recording Count: ${record.recording_count}
             <MaterialIcons name="close" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-
-        {isLoadingRecords ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading....</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={records}
-            keyExtractor={(item) => item.id}
-            renderItem={renderRecordItem}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContainer}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <MaterialIcons name="mail-outline" size={48} color="#8E8E93" />
-                <Text style={styles.emptyText}>No recordings available</Text>
-              </View>
-            }
-          />
-        )}
+        <View style={styles.modalContent}>
+          {isLoadingRecords ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.loadingText}>Loading....</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={records}
+              keyExtractor={(item) => item.id}
+              renderItem={renderRecordItem}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={[styles.listContainer, { paddingBottom: 40 }]}
+              style={{ flex: 1 }}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="always"
+              scrollIndicatorInsets={{ right: 1, bottom: 24 }}
+              removeClippedSubviews={false}
+              scrollEnabled={true}
+              bounces={true}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <MaterialIcons name="mail-outline" size={48} color="#8E8E93" />
+                  <Text style={styles.emptyText}>No recordings available</Text>
+                </View>
+              }
+            />
+          )}
+        </View>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  overlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 4000,
   },
   backdrop: {
@@ -1027,17 +942,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
   },
-  backdropTouchable: {
-    flex: 1,
-  },
   modalContainer: {
-    position: 'absolute',
-    top: 100,
-    left: 0,
-    right: 0,
-    bottom: 60,
+    width: '100%',
+    height: '85%',
     backgroundColor: '#1C1C1E',
-    borderRadius: 50,
+    borderRadius: Platform.OS === 'ios' ? 50 : 30,
+    padding: 10,
+    flexDirection: 'column',
+    display: 'flex',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1073,6 +986,12 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingVertical: 10,
+    paddingBottom: 40,
+    flexGrow: 1,
+  },
+  modalContent: {
+    flex: 1,
+    flexDirection: 'column',
   },
   recordItem: {
     flexDirection: 'row',
@@ -1105,6 +1024,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 20,
   },
   emptyText: {
     fontSize: 16,
@@ -1249,6 +1169,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 50,
   },
   loadingText: {
     fontSize: 16,

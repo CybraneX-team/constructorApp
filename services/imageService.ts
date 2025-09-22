@@ -1,4 +1,6 @@
 import API_CONFIG from '../config/api';
+import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
 
 export interface ImageUploadResponse {
   success: boolean;
@@ -89,62 +91,68 @@ export const imageService = {
         throw new Error('Authentication token required');
       }
 
-      // Create FormData for multipart upload
-      const formData = new FormData();
-      
+      // Ensure the file exists and is readable; if not, copy it to cache
+      const ensureLocalReadableUri = async (uri: string): Promise<string> => {
+        try {
+          const info = await FileSystem.getInfoAsync(uri);
+          if (info.exists) return uri;
+        } catch {}
+        // If not directly readable, try copying into app cache
+        const extGuess = uri.split('.').pop()?.toLowerCase() || 'jpg';
+        const dest = `${FileSystem.cacheDirectory}upload_${Date.now()}.${extGuess}`;
+        try {
+          await FileSystem.copyAsync({ from: uri, to: dest });
+          return dest;
+        } catch {
+          return uri; // fallback: let upload attempt use original URI
+        }
+      };
+
+      const normalizedUri = await ensureLocalReadableUri(imageUri);
+
       // Detect file extension from URI
-      const fileExtension = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileExtension = normalizedUri.split('.').pop()?.toLowerCase() || 'jpg';
       const mimeType = fileExtension === 'png' ? 'image/png' : 
                       fileExtension === 'gif' ? 'image/gif' : 
                       fileExtension === 'webp' ? 'image/webp' : 'image/jpeg';
-      
-      // Add the image file
-      formData.append('image', {
-        uri: imageUri,
-        type: mimeType,
-        name: `image_${Date.now()}.${fileExtension}`
-      } as any);
-      
-      // Add job_id (site ObjectId)
-      formData.append('job_id', job_id);
-      
-      // Add day_id if provided
-      if (day_id) {
-        formData.append('day_id', day_id);
-      }
-      
-      // Add metadata if provided
-      if (metadata) {
-        formData.append('metadata', JSON.stringify(metadata));
-      }
-
-      // Note: selected date is stored in metadata instead of as separate field
-      // since backend doesn't support selected_date parameter
 
       console.log('📸 Uploading image for job_id:', job_id);
       console.log('📸 Day ID:', day_id);
       console.log('📸 Image URI:', imageUri);
+      console.log('📸 Normalized URI:', normalizedUri);
       console.log('📸 Metadata:', metadata);
       console.log('📸 Selected Date:', selectedDate?.toISOString().split('T')[0]);
       console.log('📸 API Base URL:', API_CONFIG.BASE_URL);
       console.log('📸 Full URL:', `${API_CONFIG.BASE_URL}/images/upload`);
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/images/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      // Prefer FileSystem.uploadAsync for reliable multipart uploads, especially on Android
+      const uploadResult = await FileSystem.uploadAsync(
+        `${API_CONFIG.BASE_URL}/images/upload`,
+        normalizedUri,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'image',
+          mimeType,
+          parameters: {
+            job_id,
+            ...(day_id ? { day_id } : {}),
+            ...(metadata ? { metadata: JSON.stringify(metadata) } : {}),
+          },
+        }
+      );
 
-      const result = await response.json();
-      
-      console.log('📸 Response status:', response.status);
-      console.log('📸 Response headers:', response.headers);
-      console.log('📸 Response body:', result);
-      
-      if (!response.ok) {
-        throw new Error(result.error || `Upload failed with status ${response.status}`);
+      console.log('📸 Upload status:', uploadResult.status);
+      console.log('📸 Upload body:', uploadResult.body);
+
+      let result: any = {};
+      try { result = JSON.parse(uploadResult.body || '{}'); } catch {}
+
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        throw new Error(result.error || `Upload failed with status ${uploadResult.status}`);
       }
 
       // Transform the backend response to match our expected format

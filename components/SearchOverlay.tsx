@@ -46,6 +46,7 @@ interface SearchOverlayProps {
   searchOverlayOpacity: Animated.SharedValue<number>;
   records: any[];
   onRecordClick: (record: any) => void;
+  onOpenEmailModal: () => void;
 }
 
 interface ChatBubbleProps {
@@ -69,6 +70,29 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onRecordClick }) => {
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Sanitize and prettify assistant text (remove code fences and raw JSON)
+  const cleanAssistantText = (raw: string): string => {
+    if (!raw) return '';
+    let text = String(raw).trim();
+    // Strip code fences like ```json ... ``` or ``` ... ```
+    if (/^```[a-zA-Z]*[\r\n]/.test(text) && /[\r\n]```$/.test(text)) {
+      text = text.replace(/^```[a-zA-Z]*[\r\n]/, '').replace(/[\r\n]```$/, '').trim();
+    }
+    // If the remaining looks like JSON, try to extract a friendly message
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed === 'string') return parsed;
+      if (parsed && typeof parsed === 'object') {
+        if (typeof (parsed as any).message === 'string') return (parsed as any).message;
+        const kv = Object.entries(parsed as Record<string, any>)
+          .filter(([_, v]) => ['string', 'number', 'boolean'].includes(typeof v))
+          .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${String(v)}`);
+        if (kv.length > 0) return kv.join('\n');
+      }
+    } catch {}
+    return text;
   };
 
   if (message.type === "recording" && message.recordingData) {
@@ -151,7 +175,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onRecordClick }) => {
             message.isUser ? styles.userText : styles.aiText,
           ]}
         >
-          {message.text}
+          {message.isUser ? message.text : cleanAssistantText(message.text)}
         </Text>
       </View>
       <Text
@@ -207,6 +231,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   searchOverlayOpacity,
   records,
   onRecordClick,
+  onOpenEmailModal,
 }) => {
   const { token } = useAuth(); // Get the auth token
   const { selectedSite } = useSite(); // Get the selected site
@@ -233,7 +258,6 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   const [isInputMode, setIsInputMode] = useState(false);
   const [isEmailerMode, setIsEmailerMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [showEmailModal, setShowEmailModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const inputScale = useSharedValue(1);
@@ -487,7 +511,8 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
   };
 
   const toggleEmailerMode = () => {
-    setShowEmailModal(true);
+    onOpenEmailModal();
+    onClose();
   };
 
   const handleRecordStart = () => {
@@ -759,11 +784,7 @@ const SearchOverlay: React.FC<SearchOverlayProps> = ({
         </KeyboardAvoidingView>
       </Animated.View>
 
-      {/* Email Modal */}
-      <EmailModal
-        isVisible={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
-      />
+      {/* Email Modal is now rendered in main component */}
     </View>
   );
 };

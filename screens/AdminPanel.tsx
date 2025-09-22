@@ -369,7 +369,7 @@ const AdminPanel: React.FC = () => {
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>{sites.length}</Text>
-          <Text style={styles.statLabel}>Total Sites</Text>
+          <Text style={styles.statLabel}>Sites</Text>
         </View>
       </View>
 
@@ -493,6 +493,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8E8E93',
     marginTop: 4,
+    textAlign: 'center',
   },
   listContainer: {
     paddingHorizontal: 20,

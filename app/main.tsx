@@ -22,6 +22,7 @@ import { RecordButton } from '../components/RecordButton';
 import RecordDetailView from '../components/RecordDetailView';
 import RecordsList from '../components/RecordsList';
 import SearchOverlay from '../components/SearchOverlay';
+import EmailModal from '../components/EmailModal';
 import { ToastMessage } from '../components/ToastMessage';
 import { UploadStatus } from '../components/UploadStatus';
 import WorkProgressModal from '../components/WorkProgressModal';
@@ -144,6 +145,7 @@ const VoiceMemosScreen = () => {
   // Media capture/pick state
   const [showMediaOptions, setShowMediaOptions] = useState(false);
   const [showDescriptionPrompt, setShowDescriptionPrompt] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [showRefreshOverlay, setShowRefreshOverlay] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState('');
@@ -708,6 +710,17 @@ const VoiceMemosScreen = () => {
             searchOverlayOpacity={searchOverlayOpacity}
             records={recordsList}
             onRecordClick={handleRecordClick}
+            onOpenEmailModal={() => setShowEmailModal(true)}
+          />
+
+          <EmailModal
+            isVisible={showEmailModal}
+            onClose={() => setShowEmailModal(false)}
+          />
+
+          <EmailModal
+            isVisible={showEmailModal}
+            onClose={() => setShowEmailModal(false)}
           />
 
           {/* Media options and description prompt */}

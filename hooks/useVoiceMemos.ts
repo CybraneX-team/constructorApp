@@ -73,6 +73,7 @@ export const useVoiceMemos = (options?: {
   const [showRecordsList, setShowRecordsList] = useState(false);
   const [showRecordDetail, setShowRecordDetail] = useState(false);
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<RecordDetail | null>(null);
   const [memos, setMemos] = useState<Memo[]>(initialMemos);
   const [recordsList, setRecordsList] = useState<any[]>([]);
@@ -864,6 +865,7 @@ export const useVoiceMemos = (options?: {
     showRecordsList,
     showRecordDetail,
     showSearchOverlay,
+    showEmailModal,
     selectedRecord,
     memos,
     recordsList,

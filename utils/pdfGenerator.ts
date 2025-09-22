@@ -101,7 +101,13 @@ const saveToAppDocuments = async (sourceUri: string, filename: string): Promise<
 // Legacy function for backward compatibility
 export const generatePDFFromRecord = generateAndSharePDF;
 
-function buildDailyWorkSummaryHtml(record: RecordDetail, includeRates: boolean = true): string {
+export function buildDailyWorkSummaryHtml(record: RecordDetail, includeRates: boolean = true): string {
+  const laborHtml = renderLaborTable(record, includeRates);
+  const subcontractorHtml = renderSubcontractorTable(record);
+  const activitiesText = (record.dailyActivities || '').trim();
+  const materialsHtml = renderMaterialsTable(record, includeRates);
+  const equipmentHtml = renderEquipmentTable(record, includeRates);
+
   return `
     <!DOCTYPE html>
     <html>
@@ -232,26 +238,36 @@ function buildDailyWorkSummaryHtml(record: RecordDetail, includeRates: boolean =
               <div class="meta-grid">
                 <div class="meta-label">Date:</div>
                 <div class="meta-value">${escapeHtml(record.date || '')}</div>
-                <div class="meta-label">Job</div>
-                <div class="meta-value">${escapeHtml(record.jobNumber || '')}</div>
+                <div class="meta-label">Site Name</div>
+                <div class="meta-value">${escapeHtml((record as any).siteName || record.jobNumber || '')}</div>
               </div>
             </div>
           </div>
 
+          ${laborHtml ? `
           <div class="section-header">Labor</div>
-          ${renderLaborTable(record, includeRates)}
+          ${laborHtml}
+          ` : ''}
 
+          ${subcontractorHtml ? `
           <div class="section-header">Subcontractors</div>
-          ${renderSubcontractorTable(record)}
+          ${subcontractorHtml}
+          ` : ''}
 
+          ${activitiesText ? `
           <div class="section-header">Daily Activities</div>
-          <div class="activities">${escapeHtml(record.dailyActivities || 'No activities recorded')}</div>
+          <div class="activities">${escapeHtml(activitiesText)}</div>
+          ` : ''}
 
+          ${materialsHtml ? `
           <div class="section-header">Materials Deliveries</div>
-          ${renderMaterialsTable(record, includeRates)}
+          ${materialsHtml}
+          ` : ''}
 
+          ${equipmentHtml ? `
           <div class="section-header">Equipment</div>
-          ${renderEquipmentTable(record, includeRates)}
+          ${equipmentHtml}
+          ` : ''}
 
           ${record.images && record.images.length > 0 ? `
             <div class="section-header">Site Photos</div>
@@ -284,30 +300,34 @@ function escapeHtml(text: string): string {
 
 // LABOR TABLE
 function renderLaborTable(record: RecordDetail, includeRates: boolean = true): string {
-  const rows: Array<{ title: string; data: any }> = [
-    { title: 'Manager', data: record.laborData?.manager },
-    { title: 'Foreman', data: record.laborData?.foreman },
-    { title: 'Carpenter', data: record.laborData?.carpenter },
-    { title: 'Skill Laborer', data: record.laborData?.skillLaborer },
-    { title: 'Carpenter Extra', data: record.laborData?.carpenterExtra },
-  ];
+  const entries = Object.entries(record.laborData || {});
 
-  const body = rows
-    .map(({ title, data }) => {
-      // Add null/undefined checks for data object
-      const safeData = data || {};
+  const visible = entries
+    .map(([key, data]) => ({ key, data }))
+    .filter(({ data }) => hasLaborRoleData(data));
+
+  if (visible.length === 0) return '';
+
+  const rowsHtml = visible
+    .map(({ key, data }) => {
+      const title = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (s) => s.toUpperCase());
+      const safe = data || {};
       return `
         <tr>
           <td>${escapeHtml(title)}</td>
-          <td class="num">${escapeHtml(safeData.startTime || '')}</td>
-          <td class="num">${escapeHtml(safeData.finishTime || '')}</td>
-          <td class="num">${escapeHtml(safeData.hours ?? '')}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.rate ?? '') : '-')}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.total ?? '') : '-')}</td>
+          <td class="num">${escapeHtml(safe.startTime || '')}</td>
+          <td class="num">${escapeHtml(safe.finishTime || '')}</td>
+          <td class="num">${escapeHtml(safe.hours ?? '')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.rate && safe.rate !== '$-' ? safe.rate : '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.total && safe.total !== '$-' ? safe.total : '') : '-')}</td>
         </tr>
       `;
     })
     .join('');
+
+  const totals = computeColumnTotal(visible.map((v) => v.data?.total || ''));
 
   return `
     <table class="mb-16">
@@ -322,10 +342,10 @@ function renderLaborTable(record: RecordDetail, includeRates: boolean = true): s
         </tr>
       </thead>
       <tbody>
-        ${body}
+        ${rowsHtml}
         <tr class="totals-row">
           <td colspan="5">Total</td>
-          <td class="num">${includeRates ? computeColumnTotal(rows.map(r => r.data?.total || '')) : '-'}</td>
+          <td class="num">${includeRates ? totals : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -334,7 +354,27 @@ function renderLaborTable(record: RecordDetail, includeRates: boolean = true): s
 
 // SUBCONTRACTORS TABLE
 function renderSubcontractorTable(record: RecordDetail): string {
-  const subcontractor = record.subcontractors?.superiorTeamRebar || {};
+  const entries = Object.entries(record.subcontractors || {});
+  const visible = entries
+    .map(([key, data]) => ({ key, data }))
+    .filter(({ data }) => hasSubcontractorData(data));
+  if (visible.length === 0) return '';
+
+  const body = visible
+    .map(({ key, data }) => {
+      const title = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (s) => s.toUpperCase());
+      return `
+        <tr>
+          <td>${escapeHtml(title)}</td>
+          <td class="num">${escapeHtml(String(data?.employees || 0))}</td>
+          <td class="num">${escapeHtml(String(data?.hours || 0))}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
   return `
     <table class="mb-16">
       <thead>
@@ -345,11 +385,7 @@ function renderSubcontractorTable(record: RecordDetail): string {
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Superior Team Rebar</td>
-          <td class="num">${escapeHtml(String(subcontractor.employees || 0))}</td>
-          <td class="num">${escapeHtml(String(subcontractor.hours || 0))}</td>
-        </tr>
+        ${body}
       </tbody>
     </table>
   `;
@@ -357,26 +393,32 @@ function renderSubcontractorTable(record: RecordDetail): string {
 
 // MATERIALS TABLE
 function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true): string {
-  const items = [
-    { name: 'Argos Class 4 4500 PSI concrete', data: record.materialsDeliveries?.argosClass4 },
-    { name: 'Expansion Joint material', data: record.materialsDeliveries?.expansionJoint },
-  ];
+  const entries = Object.entries(record.materialsDeliveries || {});
+  const visible = entries
+    .map(([key, data]) => ({ key, data }))
+    .filter(({ data }) => hasMaterialItemData(data));
+  if (visible.length === 0) return '';
 
-  const body = items
-    .map(({ name, data }) => {
-      const safeData = data || {};
+  const body = visible
+    .map(({ key, data }) => {
+      const title = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (s) => s.toUpperCase());
+      const safe = data || {};
       return `
         <tr>
-          <td>${escapeHtml(name)}</td>
-          <td class="num">${escapeHtml(safeData.qty || '')}</td>
-          <td>${escapeHtml(safeData.uom || '')}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.unitRate ?? '') : '-')}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.tax ?? '') : '-')}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.total ?? '') : '-')}</td>
+          <td>${escapeHtml(title)}</td>
+          <td class="num">${escapeHtml(safe.qty || '')}</td>
+          <td>${escapeHtml(safe.uom || '')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.unitRate && safe.unitRate !== '$-' ? safe.unitRate : '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.tax && safe.tax !== '$-' ? safe.tax : '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.total && safe.total !== '$-' ? safe.total : '') : '-')}</td>
         </tr>
       `;
     })
     .join('');
+
+  const totals = computeColumnTotal(visible.map((v) => v.data?.total || ''));
 
   return `
     <table class="mb-16">
@@ -394,7 +436,7 @@ function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true
         ${body}
         <tr class="totals-row">
           <td colspan="5">Totals</td>
-          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data?.total || '')) : '-'}</td>
+          <td class="num">${includeRates ? totals : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -403,28 +445,30 @@ function renderMaterialsTable(record: RecordDetail, includeRates: boolean = true
 
 // EQUIPMENT TABLE
 function renderEquipmentTable(record: RecordDetail, includeRates: boolean = true): string {
-  const items = [
-    { name: 'Truck', data: record.equipment?.truck },
-    { name: '14k EQUIPMENT TRAILER', data: record.equipment?.equipmentTrailer },
-    { name: 'Fuel', data: record.equipment?.fuel },
-    { name: 'Mini Excavator with Basket', data: record.equipment?.miniExcavator },
-    { name: '12 ft closed tool trailer', data: record.equipment?.closedToolTrailer },
-    { name: 'Skid Stir', data: record.equipment?.skidStir },
-  ];
+  const entries = Object.entries(record.equipment || {});
+  const visible = entries
+    .map(([key, data]) => ({ key, data }))
+    .filter(({ data }) => hasEquipmentItemData(data));
+  if (visible.length === 0) return '';
 
-  const body = items
-    .map(({ name, data }) => {
-      const safeData = data || {};
+  const body = visible
+    .map(({ key, data }) => {
+      const title = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (s) => s.toUpperCase());
+      const safe = data || {};
       return `
         <tr>
-          <td>${escapeHtml(name)}</td>
-          <td class="num">${escapeHtml(String(safeData.days ?? ''))}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.monthlyRate ?? '') : '-')}</td>
-          <td class="num">${escapeHtml(includeRates ? (safeData.itemRate ?? '') : '-')}</td>
+          <td>${escapeHtml(title)}</td>
+          <td class="num">${escapeHtml(String(safe.days ?? ''))}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.monthlyRate && safe.monthlyRate !== '$-' ? safe.monthlyRate : '') : '-')}</td>
+          <td class="num">${escapeHtml(includeRates ? (safe.itemRate && safe.itemRate !== '$-' ? safe.itemRate : '') : '-')}</td>
         </tr>
       `;
     })
     .join('');
+
+  const totals = computeColumnTotal(visible.map((v) => v.data?.itemRate || ''));
 
   return `
     <table>
@@ -440,7 +484,7 @@ function renderEquipmentTable(record: RecordDetail, includeRates: boolean = true
         ${body}
         <tr class="totals-row">
           <td colspan="3">Totals</td>
-          <td class="num">${includeRates ? computeColumnTotal(items.map(i => i.data?.itemRate || '')) : '-'}</td>
+          <td class="num">${includeRates ? totals : '-'}</td>
         </tr>
       </tbody>
     </table>
@@ -478,4 +522,56 @@ function formatCurrency(n: number): string {
   } catch {
     return `$${n.toFixed(2)}`;
   }
+}
+
+// --- Visibility helpers aligned with RecordDetailView ---
+function hasLaborRoleData(laborRole: any): boolean {
+  if (!laborRole) return false;
+  const fields = ['startTime', 'finishTime', 'hours', 'rate', 'total'];
+  return fields.some((field) => {
+    const value = laborRole[field];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (field === 'hours' && trimmed === '0.00') return false;
+      if ((field === 'rate' || field === 'total') && trimmed === '$-') return false;
+      return trimmed !== '';
+    }
+    if (typeof value === 'number') return value !== 0;
+    return false;
+  });
+}
+
+function hasSubcontractorData(item: any): boolean {
+  if (!item || typeof item !== 'object') return false;
+  return (item.employees && item.employees !== 0) || (item.hours && item.hours !== 0);
+}
+
+function hasMaterialItemData(material: any): boolean {
+  if (!material || typeof material !== 'object') return false;
+  const fields = ['qty', 'uom', 'unitRate', 'tax', 'total'];
+  return fields.some((field) => {
+    const value = material[field];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if ((field === 'unitRate' || field === 'tax' || field === 'total') && trimmed === '$-') return false;
+      return trimmed !== '';
+    }
+    if (typeof value === 'number') return value !== 0;
+    return false;
+  });
+}
+
+function hasEquipmentItemData(equipment: any): boolean {
+  if (!equipment || typeof equipment !== 'object') return false;
+  const fields = ['days', 'monthlyRate', 'itemRate'];
+  return fields.some((field) => {
+    const value = equipment[field];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if ((field === 'monthlyRate' || field === 'itemRate') && trimmed === '$-') return false;
+      return trimmed !== '';
+    }
+    if (typeof value === 'number') return value !== 0;
+    return false;
+  });
 }
