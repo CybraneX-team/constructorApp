@@ -4,14 +4,17 @@ import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../utils/apiConfig';
 import { useAuth } from '../contexts/AuthContext';
+import { getRecordDate } from '../utils/dateFormatter';
 
 interface AdminDayLogItem {
   id: string;
-  date?: string;
+  local_date?: string; // API returns local_date, not date
   site?: string;
   created_by?: string;
   contributors?: string[];
   updated_at?: number;
+  total_duration?: string;
+  recording_count?: number;
 }
 
 const AdminSiteRecordings: React.FC = () => {
@@ -66,14 +69,20 @@ const AdminSiteRecordings: React.FC = () => {
     const contributors = item.contributors && item.contributors.length > 0
       ? item.contributors.join(', ')
       : (item.created_by || 'Unknown');
-    const dateText = item.date ? new Date(item.date).toLocaleDateString() : (item.updated_at ? new Date(item.updated_at).toLocaleString() : '');
+    
+    // Use shared date formatter for consistency with main app
+    const dateText = getRecordDate(item);
+    
     return (
       <TouchableOpacity onPress={() => openSummary(item.id)} activeOpacity={0.8}>
         <View style={styles.card}>
           <View style={styles.cardLeft}>
-            <Text style={styles.cardTitle}>Consolidated Recording</Text>
-            {!!dateText && <Text style={styles.cardSubtitle}>{dateText}</Text>}
+            <Text style={styles.cardTitle}>Daily Work Summary</Text>
+            {dateText !== 'No Date Available' && <Text style={styles.cardSubtitle}>{dateText}</Text>}
             <Text style={styles.cardContrib}>Contributors: {contributors}</Text>
+            {item.recording_count && (
+              <Text style={styles.cardMeta}>{item.recording_count} recording{item.recording_count !== 1 ? 's' : ''}</Text>
+            )}
           </View>
           <Ionicons name="chevron-forward" size={20} color="#8E8E93" />
         </View>
@@ -146,6 +155,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: '600', color: '#000' },
   cardSubtitle: { marginTop: 4, fontSize: 13, color: '#8E8E93' },
   cardContrib: { marginTop: 6, fontSize: 13, color: '#333' },
+  cardMeta: { marginTop: 4, fontSize: 12, color: '#666', fontStyle: 'italic' },
   empty: { alignItems: 'center', paddingTop: 48 },
   emptyTitle: { marginTop: 12, fontSize: 18, fontWeight: '600', color: '#8E8E93' },
   emptySub: { marginTop: 6, fontSize: 14, color: '#8E8E93' },

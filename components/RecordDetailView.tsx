@@ -30,6 +30,7 @@ import {
   EditableMaterialCard, 
   EditableEquipmentCard 
 } from './EditableCards';
+import { formatDate, getRecordDate } from '../utils/dateFormatter';
 
 const screenWidth = Dimensions.get('window').width;
 const isSmallScreen = screenWidth < 360;
@@ -1003,7 +1004,7 @@ const RecordDetailView: React.FC<RecordDetailViewProps> = ({
             <View style={styles.recordDetailHeader}>
           <View style={styles.headerLeftSection}>
             <Text style={styles.recordDetailTitle}>Daily Work Summary</Text>
-            <Text style={styles.recordDetailDate}>{resolvedRecord.date}</Text>
+            <Text style={styles.recordDetailDate}>{getRecordDate(resolvedRecord)}</Text>
             <Text style={styles.recordDetailJob}>Job: {resolvedRecord.jobNumber}</Text>
           </View>
           <View style={styles.headerRightSection}>
@@ -1286,7 +1287,8 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
 
   const mapped = {
     ...existing,
-    date: s?.date || summary?.date || existing.date,
+    // Prioritize API fields: local_date -> structured_summary.date -> existing.date
+    date: existing.local_date || s?.date || summary?.date || existing.date,
     jobNumber: s?.jobId || s?.jobID || s?.job_id || summary?.jobNumber || existing.jobNumber,
     images: existing.images || [], // Preserve images from existing record
     dailyActivities: s?.dailyActivities || s?.activities?.text || s?.activities?.description || s?.daily_activities || s?.overview || existing.dailyActivities,

@@ -937,30 +937,20 @@ function mapBackendRecordingToListItem(dayRecording: any) {
   // Format duration from totalDuration or structuredSummary duration
   const durationStr = dayRecording.totalDuration || structuredSummary.duration || '00:00';
   
-  // Get the actual recording date from backend (local_date field)
-  const recordingDate = dayRecording.local_date || dayRecording.date || structuredSummary.date;
+  // Use shared date formatter for consistency - it will prioritize API fields correctly
+  const { getRecordDate } = require('../utils/dateFormatter');
   
-  // Format the date for display (convert from YYYY-MM-DD to readable format)
-  const formatDateForDisplay = (dateStr: string) => {
-    if (!dateStr) return null;
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { 
-        month: 'numeric', 
-        day: 'numeric', 
-        year: 'numeric' 
-      });
-    } catch (error) {
-      console.warn('Failed to parse date:', dateStr, error);
-      return dateStr; // Return original string if parsing fails
-    }
-  };
+  // Pass the full record object to getRecordDate so it can prioritize API fields correctly
+  const title = getRecordDate({
+    local_date: dayRecording.local_date,
+    structuredSummary: structuredSummary,
+    date: dayRecording.date,
+    created_at: dayRecording.created_at,
+    updated_at: dayRecording.updated_at
+  }) || 'Unknown Date';
   
-  // Use the formatted date as the title
-  const title = formatDateForDisplay(recordingDate) || 'Unknown Date';
-  
-  // Format date for display (same as title for consistency)
-  const dateStr = formatDateForDisplay(recordingDate) || 'Unknown Date';
+  // Use the same date for consistency
+  const dateStr = title;
 
   return {
     id: dayRecording.id || `day_${Date.now()}`,
@@ -980,27 +970,14 @@ function mapBackendRecordingToListItem(dayRecording: any) {
 }
 
 function createEmptyRecordDetailFromListItem(item: any): RecordDetail {
-  // Format date consistently with the list item mapping
-  const formatDateForDisplay = (dateStr: string) => {
-    if (!dateStr) return null;
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { 
-        month: 'numeric', 
-        day: 'numeric', 
-        year: 'numeric' 
-      });
-    } catch (error) {
-      console.warn('Failed to parse date:', dateStr, error);
-      return dateStr; // Return original string if parsing fails
-    }
-  };
+  // Use shared date formatter for consistency
+  const { getRecordDate } = require('../utils/dateFormatter');
   
   return {
     id: item?.id || `rec_${Date.now()}`,
     title: item?.title || 'Recording',
     duration: item?.duration || '00:00',
-    date: formatDateForDisplay(item?.date) || 'Unknown Date',
+    date: getRecordDate(item) || 'Unknown Date',
     jobNumber: item?.jobNumber || '-',
     structuredSummary: item?.structuredSummary, // Include the structuredSummary data
     images: item?.images || [], // Include images from backend

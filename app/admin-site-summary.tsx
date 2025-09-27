@@ -13,6 +13,7 @@ import {
 } from '../components/EditableCards';
 import { imageService } from '../services/imageService';
 import { recordingService } from '../services/recordingService';
+import { getRecordDate } from '../utils/dateFormatter';
 
 interface AdminDayLog {
   id: string;
@@ -208,7 +209,7 @@ const AdminSiteSummary: React.FC = () => {
 
         const view = {
           id: id,
-          date: s.date || logData?.local_date || '',
+          date: logData?.local_date || s.date || '',
           jobNumber: logData?.site || site,
           dailyActivities: s.activities?.text || s.activities?.description || s.dailyActivities || s.daily_activities || '',
           laborData: labor,
@@ -320,7 +321,7 @@ const AdminSiteSummary: React.FC = () => {
         <View style={styles.topRow}>
           <View style={styles.topLeft}>
             <Text style={styles.title}>Daily Work Summary</Text>
-            {isNonEmptyString(recordView?.date) && <Text style={styles.subTitle}>{recordView?.date}</Text>}
+            {isNonEmptyString(recordView?.date) && <Text style={styles.subTitle}>{getRecordDate(recordView)}</Text>}
             {isNonEmptyString(recordView?.jobNumber) && <Text style={styles.jobText}>Site: {recordView?.jobNumber}</Text>}
           </View>
           <View style={styles.topRight}>

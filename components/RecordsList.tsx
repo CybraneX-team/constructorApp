@@ -19,77 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSite } from '../contexts/SiteContext';
 import { Ionicons } from '@expo/vector-icons';
 import { customAlert } from '../services/customAlertService';
-
-
-// Format date function for use in components
-const formatDate = (dateString: string | null | undefined) => {
-  try {
-    // Handle null, undefined, or empty strings
-    if (!dateString || dateString === 'undefined' || dateString === 'null') {
-      return 'No Date';
-    }
-
-    // Clean the date string - remove any extra spaces or invalid characters
-    const cleanDateString = dateString.toString().trim();
-    
-    // Try to create a date object
-    let date = new Date(cleanDateString);
-    
-    // If the date is invalid, try parsing common formats
-    if (isNaN(date.getTime())) {
-      // Try parsing MM/DD/YYYY format
-      const mmddyyyy = cleanDateString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (mmddyyyy) {
-        const [, month, day, year] = mmddyyyy;
-        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-      }
-      
-      // Try parsing YYYY-MM-DD format
-      if (isNaN(date.getTime())) {
-        const yyyymmdd = cleanDateString.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-        if (yyyymmdd) {
-          const [, year, month, day] = yyyymmdd;
-          date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        }
-      }
-      
-      // Try parsing DD/MM/YYYY format
-      if (isNaN(date.getTime())) {
-        const ddmmyyyy = cleanDateString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (ddmmyyyy) {
-          const [, day, month, year] = ddmmyyyy;
-          date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        }
-      }
-    }
-    
-    // Final check if date is still invalid
-    if (isNaN(date.getTime())) {
-      console.warn('Unable to parse date:', dateString);
-      return 'Invalid Date';
-    }
-    
-    const monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'
-    ];
-    
-    const month = monthNames[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    
-    // Validate the extracted values
-    if (!month || isNaN(day) || isNaN(year)) {
-      console.warn('Invalid date components:', { month, day, year, original: dateString });
-      return 'Invalid Date';
-    }
-    
-    return `${month} ${day}, ${year}`;
-  } catch (error) {
-    console.error('Error formatting date:', error, 'Original:', dateString);
-    return 'Error parsing date';
-  }
-};
+import { formatDate, getRecordDate } from '../utils/dateFormatter';
 
 // Separate component for record item to avoid hook violations
 const RecordItem: React.FC<{
@@ -199,7 +129,7 @@ const RecordItem: React.FC<{
           </View>
           <View style={styles.recordInfo}>
             <Text style={styles.recordTitle} numberOfLines={2}>
-              {item.formattedDate || formatDate(item.date) || formatDate(item.created_at) || formatDate(item.timestamp) || 'No Date Available'}
+              {item.formattedDate || getRecordDate(item)}
             </Text>
             <View style={styles.recordMetaRow}>
               {item.jobNumber && (
@@ -331,50 +261,52 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
   const sortRecordsByDate = (records: any[]) => {
     return [...records].sort((a, b) => {
       try {
-        // Get date strings from various possible fields
-        const dateStringA = a.date || a.created_at || a.timestamp;
-        const dateStringB = b.date || b.created_at || b.timestamp;
+        // Helper function to parse dates from various formats
+        const parseDate = (dateStr: string) => {
+          if (!dateStr) return null;
+          
+          // Try direct parsing first
+          let date = new Date(dateStr);
+          if (!isNaN(date.getTime())) return date;
+          
+          // Try parsing "Sept 16, 2025" format
+          const monthDayYear = dateStr.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{4})$/);
+          if (monthDayYear) {
+            const [, monthName, day, year] = monthDayYear;
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+            const monthIndex = monthNames.indexOf(monthName === 'Sep' ? 'Sept' : monthName);
+            if (monthIndex !== -1) {
+              return new Date(parseInt(year), monthIndex, parseInt(day));
+            }
+          }
+          
+          return null;
+        };
+        
+        // Get dates from various possible fields
+        const dateA = parseDate(a.local_date || a.date || a.created_at || a.timestamp);
+        const dateB = parseDate(b.local_date || b.date || b.created_at || b.timestamp);
         
         // Handle undefined/null dates by putting them at the end
-        if (!dateStringA && !dateStringB) return 0;
-        if (!dateStringA) return 1;
-        if (!dateStringB) return -1;
-        
-        // Parse dates more robustly
-        let dateA = new Date(dateStringA);
-        let dateB = new Date(dateStringB);
-        
-        // If direct parsing fails, try to handle different formats
-        if (isNaN(dateA.getTime())) {
-          // Try MM/DD/YYYY format
-          const mmddyyyy = dateStringA.toString().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          if (mmddyyyy) {
-            const [, month, day, year] = mmddyyyy;
-            dateA = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-          }
-        }
-        
-        if (isNaN(dateB.getTime())) {
-          // Try MM/DD/YYYY format
-          const mmddyyyy = dateStringB.toString().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          if (mmddyyyy) {
-            const [, month, day, year] = mmddyyyy;
-            dateB = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-          }
-        }
-        
-        // If dates are still invalid, put them at the end
-        if (isNaN(dateA.getTime()) && isNaN(dateB.getTime())) return 0;
-        if (isNaN(dateA.getTime())) return 1;
-        if (isNaN(dateB.getTime())) return -1;
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
         
         // Sort latest first (descending order)
         const result = dateB.getTime() - dateA.getTime();
         
         // Debug logging
         console.log('Sorting comparison:', {
-          a: { date: dateStringA, parsed: dateA.toISOString() },
-          b: { date: dateStringB, parsed: dateB.toISOString() },
+          a: { 
+            local_date: a.local_date, 
+            date: a.date, 
+            parsed: dateA.toISOString() 
+          },
+          b: { 
+            local_date: b.local_date, 
+            date: b.date, 
+            parsed: dateB.toISOString() 
+          },
           result: result > 0 ? 'B is newer' : result < 0 ? 'A is newer' : 'Same'
         });
         
@@ -389,23 +321,23 @@ const RecordsList: React.FC<RecordsListProps & { isLoading?: boolean }> = ({
   // Process records: sort and format dates
   const sortedRecords = sortRecordsByDate(safeRecords);
   const processedRecords = sortedRecords.map((record, index) => {
-    // Try to get a valid date from any available field
-    const rawDate = record.date || record.created_at || record.timestamp;
-    const formattedDate = formatDate(rawDate);
+    // Use the shared date formatter which handles API fields correctly
+    const formattedDate = getRecordDate(record);
     
     // Debug log to see what we're working with
     console.log(`Record ${index + 1} (after sorting):`, {
       id: record.id,
       title: record.title,
-      rawDate,
+      local_date: record.local_date,
+      date: record.date,
+      structuredSummary: record.structuredSummary?.date,
       formattedDate,
-      type: typeof rawDate,
       position: `${index + 1} of ${sortedRecords.length}`
     });
     
     return {
       ...record,
-      formattedDate: formattedDate !== 'No Date' && formattedDate !== 'Invalid Date' && formattedDate !== 'Error parsing date' 
+      formattedDate: formattedDate !== 'No Date Available' && formattedDate !== 'Invalid Date' && formattedDate !== 'Error parsing date' 
         ? formattedDate 
         : undefined
     };
