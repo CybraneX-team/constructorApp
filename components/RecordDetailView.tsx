@@ -1162,37 +1162,25 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
       console.log(`[${new Date().toISOString()}] 🔍 API_LABOR_FIELDS - Available fields:`, Object.keys(item || {}));
       console.log(`[${new Date().toISOString()}] 🔍 API_LABOR_VALUES - All values:`, JSON.stringify(item, null, 2));
       
-      // According to MIGRATION.md, the new API structure only provides:
-      // { "role": "", "startTime": "", "finishTime": "", "hours": 0 }
-      // No total or rate fields are provided by the API
-      const apiHours = item?.hours || '';
+      // API provides: role, startTime, finishTime, hours, rate
+      const apiHours = item?.hours || 0;
+      const apiRate = item?.rate || 0;
       
-      console.log(`[${new Date().toISOString()}] 🔍 API_CALCULATION - Role: ${item?.role}, Hours: ${apiHours}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_CALCULATION - Role: ${item?.role}, Hours: ${apiHours}, Rate: ${apiRate}`);
       
-      // Check what fields are available in the API response
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Role: ${item?.role}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has rate field: ${item?.rate !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has total field: ${item?.total !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has price field: ${item?.price !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has cost field: ${item?.cost !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has amount field: ${item?.amount !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has wage field: ${item?.wage !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has salary field: ${item?.salary !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has pay field: ${item?.pay !== undefined}`);
-      console.log(`[${new Date().toISOString()}] 🔍 API_FIELD_ANALYSIS - Has compensation field: ${item?.compensation !== undefined}`);
+      // Calculate total from API data: rate * hours
+      const calculatedTotal = apiRate && apiHours ? (apiRate * apiHours).toFixed(2) : '$-';
+      const formattedRate = apiRate ? `$${apiRate.toFixed(2)}` : '$-';
+      const formattedTotal = calculatedTotal !== '$-' ? `$${calculatedTotal}` : '$-';
       
-      // Use existing data if available, otherwise show defaults
-      const existingTotal = existing?.laborData?.[key]?.total || '$-';
-      const existingRate = existing?.laborData?.[key]?.rate || '$-';
-      
-      console.log(`[${new Date().toISOString()}] 🔍 EXISTING_DATA - Role: ${item?.role}, Existing Total: ${existingTotal}, Existing Rate: ${existingRate}`);
+      console.log(`[${new Date().toISOString()}] 🔍 API_CALCULATION_RESULT - Role: ${item?.role}, Rate: ${formattedRate}, Total: ${formattedTotal}`);
       
       laborMap[key] = {
         startTime: item?.startTime ?? '',
         finishTime: item?.finishTime ?? '',
         hours: apiHours,
-        rate: existingRate, // Use existing rate since API doesn't provide it
-        total: existingTotal, // Use existing total since API doesn't provide it
+        rate: formattedRate,
+        total: formattedTotal,
         roleName: item?.role ?? key,
       };
     }
@@ -1220,15 +1208,22 @@ function mapSummaryToRecordDetail(existing: any, summary: any): any {
       console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has pay field: ${item?.pay !== undefined}`);
       console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FIELD_ANALYSIS - Has compensation field: ${item?.compensation !== undefined}`);
       
-      // Use existing data if available
-      const calculatedRate = item?.rate || existing?.laborData?.[key]?.rate || '$-';
-      const calculatedTotal = item?.total || existing?.laborData?.[key]?.total || '$-';
-      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_FALLBACK - Key: ${k}, Rate: ${calculatedRate}, Total: ${calculatedTotal}`);
+      // Use API data if available, calculate total from rate * hours
+      const apiHours = item?.hours || 0;
+      const apiRate = item?.rate || 0;
+      
+      // Calculate total from API data: rate * hours
+      const calculatedTotal = apiRate && apiHours ? (apiRate * apiHours).toFixed(2) : '$-';
+      const formattedRate = apiRate ? `$${apiRate.toFixed(2)}` : '$-';
+      const formattedTotal = calculatedTotal !== '$-' ? `$${calculatedTotal}` : '$-';
+      
+      console.log(`[${new Date().toISOString()}] 🔍 LEGACY_CALCULATION - Key: ${k}, Hours: ${apiHours}, Rate: ${apiRate}, Total: ${formattedTotal}`);
       
       laborMap[key] = {
         ...item,
-        rate: calculatedRate,
-        total: calculatedTotal,
+        hours: apiHours,
+        rate: formattedRate,
+        total: formattedTotal,
       };
     }
   }
